@@ -25,4 +25,6 @@ def send(text: str) -> bool:
         if not r.ok:
             print("Telegram hatası:", r.status_code, r.text[:300])
             ok = False
+    if ok:
+        print(f"Telegram: {len(chunks)} mesaj gönderildi.")
     return ok
