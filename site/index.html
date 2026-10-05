@@ -74,6 +74,11 @@ ul.notes{margin:4px 0;padding-left:18px;color:var(--ink2)}
 <main>
   <section class="card" id="detail" aria-live="polite"></section>
 
+  <section class="card" id="pf" hidden>
+    <h2 id="pfTitle">Bot portföyü</h2>
+    <div id="pfBody"></div>
+  </section>
+
   <section class="card">
     <h2>Stratejik alım adayları</h2>
     <div class="picks" id="picks"></div>
@@ -117,6 +122,12 @@ function render(){
   const b=S.benchmark;
   $("#meta").innerHTML=`Güncelleme ${S.generated} (TR) · SPY $${fmt(b.price)} ${pct(b.chg)} · Trend: ${b.trend} · ${S.stocks.length} hisse izleniyor`;
   $("#fwdN").textContent=20;
+  // Portföy
+  if(S.portfolio){const P=S.portfolio;$("#pf").hidden=false;
+    $("#pfTitle").textContent=`Bot portföyü · ${P.paper?"Sanal para":"Gerçek hesap"}`;
+    $("#pfBody").innerHTML=`<p class="num">Sermaye <b>$${fmt(P.equity)}</b> · Bugün ${pct(P.dayPL)} · ${P.positions.length} açık pozisyon</p>`+
+    (P.positions.length?`<div class="scroll"><table><thead><tr><th>Hisse</th><th class="r">Adet</th><th class="r">Giriş</th><th class="r">Fiyat</th><th class="r">K/Z</th></tr></thead><tbody>${P.positions.map(x=>`<tr data-t="${x.sym}"><td><b>${x.sym}</b></td><td class="r num">${x.qty}</td><td class="r num">$${fmt(x.entry)}</td><td class="r num">$${fmt(x.price)}</td><td class="r num">$${fmt(x.pl)} (${pct(x.plpc)})</td></tr>`).join("")}</tbody></table></div>`:"")+
+    (P.log&&P.log.length?`<h3>Son bot işlemleri</h3><p class="small">${P.log.slice(-10).reverse().map(l=>`${l.ts} · <b>${l.sym}</b> ${({buy_limit:"limitli alış",buy:"alış",sell:"satış",cancel:"emir iptal",reprice:"emir güncellendi",stop_to_be:"stop başa baş"})[l.side]||l.side}${l.limit?` @ $${fmt(l.limit)}`:""}${l.reason?` (${l.reason})`:""}`).join("<br>")}</p>`:"");}
   // Adaylar
   $("#picks").innerHTML=S.picks.length?S.picks.map(t=>{const s=BY[t],p=s.plan;return `<div class="pick" tabindex="0" data-t="${t}">
     <div><b>${t}</b> <span class="small">${s.name}</span></div>
