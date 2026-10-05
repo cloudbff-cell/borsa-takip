@@ -1,3 +1,4 @@
+"""Telegram bildirimleri. Gerekli secretlar: TELEGRAM_BOT_TOKEN (BotFather satırının tamamı), TELEGRAM_CHAT_ID (@userinfobot Id)."""
 import os
 import re
 
