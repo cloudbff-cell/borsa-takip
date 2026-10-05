@@ -287,6 +287,8 @@ def write_status(extra=None):
     st.update(extra or {})
     (SITE / "data").mkdir(parents=True, exist_ok=True)
     (SITE / "data" / "status.json").write_text(json.dumps(st, ensure_ascii=False))
+    # GitHub Actions özetinde görünsün (gizli bilgi içermez)
+    print("::notice title=Durum::" + json.dumps(st, ensure_ascii=False))
 
 
 def main():
