@@ -14,8 +14,8 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "Mod (auto, pre, intraday, post)"
-        default: "post"
+        description: "Mod: auto (saate göre seçer), pre, intraday, post"
+        default: "auto"
         required: false
 
 permissions:
@@ -64,7 +64,7 @@ jobs:
           if [ "${{ github.event_name }}" = "push" ]; then
             python -m engine.run --mode post --force --no-telegram --ping
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            python -m engine.run --mode "${{ inputs.mode || 'post' }}" --force
+            python -m engine.run --mode "${{ inputs.mode || 'auto' }}" --force
           else
             python -m engine.run --mode auto
           fi

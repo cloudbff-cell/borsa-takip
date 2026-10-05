@@ -227,9 +227,9 @@ def _stat_line(stats, code):
     return f"   Geçmiş: {st['n']} sinyal, %{st['hit']} isabet, {C.FORWARD_DAYS}g ort. {st['avg']:+.2f}%" if st else ""
 
 
-def alerts(summary, by, mode, state):
+def alerts(summary, by, mode, state, tag=""):
     today = summary["lastBar"]
-    phase = "close" if mode == "post" else "intra"
+    phase = ("close" if mode == "post" else "intra") + tag
     msgs = []
     for s in summary["stocks"]:
         for g in s["signals"]:
@@ -306,6 +306,8 @@ def main():
         return
     if mode == "off":
         mode = "post"
+    # Elle başlatılan ve gerçek saate uymayan çalışma (ör. seans içinde "post"): gün sonu kayıtlarını bozmasın
+    state_tag = "" if detect_mode(now_ny) == mode else "|elle"
     summary, by = build(mode, now_ny)
     if a.ping:
         telegram.send(f"✅ <b>Borsa takip sistemi güncellendi</b>\n{len(summary['stocks'])} hisse izleniyor · "
@@ -325,12 +327,12 @@ def main():
             telegram.send(plan_message(summary, by))
             state["sent"][key] = str(now_ny.date())
     else:
-        msgs = alerts(summary, by, mode, state)
+        msgs = alerts(summary, by, mode, state, state_tag)
         if msgs:
             telegram.send(("✅ <b>Kapanışta teyitli sinyaller</b>\n\n" if mode == "post" else "⏱ <b>Seans içi yeni sinyaller</b>\n\n")
                           + "\n\n".join(msgs))
         if mode == "post":
-            key = f"close|{summary['lastBar']}"
+            key = f"close|{summary['lastBar']}{state_tag}"
             if key not in state["sent"]:
                 telegram.send(close_message(summary, by))
                 state["sent"][key] = summary["lastBar"]
