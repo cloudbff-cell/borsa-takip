@@ -61,7 +61,7 @@ jobs:
           PAGES_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
-            python -m engine.run --mode post --force --no-telegram
+            python -m engine.run --mode post --force --no-telegram --ping
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             python -m engine.run --mode "${{ inputs.mode || 'post' }}" --force
           else

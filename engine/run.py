@@ -287,6 +287,7 @@ def main():
     ap.add_argument("--mode", default="auto")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--no-telegram", action="store_true")
+    ap.add_argument("--ping", action="store_true", help="Kod güncellemesinden sonra kısa bir test mesajı gönder")
     a = ap.parse_args()
     now_ny = datetime.now(NY)
     mode = detect_mode(now_ny) if a.mode == "auto" else a.mode
@@ -297,6 +298,10 @@ def main():
     if mode == "off":
         mode = "post"
     summary, by = build(mode, now_ny)
+    if a.ping:
+        telegram.send(f"✅ <b>Borsa takip sistemi güncellendi</b>\n{len(summary['stocks'])} hisse izleniyor · "
+                      f"{len(summary['picks'])} stratejik aday: {', '.join(summary['picks'][:10])}"
+                      + (f"\n📊 Panel: {PAGES_URL}" if PAGES_URL else ""))
     if a.no_telegram:
         return
     state = D.load_state()
