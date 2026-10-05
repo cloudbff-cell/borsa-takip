@@ -6,7 +6,7 @@ on:
     # açılış öncesi / seans içi / kapanış sonrası modunu kendisi seçer. GitHub zamanlanmış
     # tetiklemeleri bazen geciktirir ya da atlar; sık tetikleme bunu telafi eder. Aynı
     # sinyal/emir tekrar gönderilmez (cache/state.json).
-    - cron: "5,25,45 11-22 * * 1-5"
+    - cron: "6,26,46 11-22 * * 1-5"
   # Kod güncellenince paneli hemen yeniden oluştur (bildirim ve emir yok)
   push:
     branches: [main]
