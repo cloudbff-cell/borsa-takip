@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ABD Hisse Takip</title>
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+:root{
+  --page:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--grid:#e1e0d9;--axis:#c3c2b7;
+  --up:#0ca30c;--down:#d03b3b;--upText:#006300;--downText:#b42f2f;--warn:#fab219;
+  --s1:#2a78d6;--s2:#eb6834;--s3:#4a3aa7;--chip:#f0efec;--accent:#2a78d6;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --page:#0d0d0d;--surface:#1a1a19;--ink:#fff;--ink2:#c3c2b7;--muted:#898781;--grid:#2c2c2a;--axis:#383835;
+  --upText:#0ca30c;--downText:#e66767;--s1:#3987e5;--s2:#d95926;--s3:#9085e9;--chip:#2c2c2a;--accent:#3987e5}}
+:root[data-theme="dark"]{--page:#0d0d0d;--surface:#1a1a19;--ink:#fff;--ink2:#c3c2b7;--muted:#898781;--grid:#2c2c2a;--axis:#383835;
+  --upText:#0ca30c;--downText:#e66767;--s1:#3987e5;--s2:#d95926;--s3:#9085e9;--chip:#2c2c2a;--accent:#3987e5}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{padding:20px 16px 8px;max-width:1280px;margin:0 auto;display:flex;flex-wrap:wrap;gap:8px 24px;align-items:baseline}
+h1{font-size:20px;margin:0;font-weight:650}
+.meta{color:var(--ink2);font-size:13px}
+.disc{max-width:1280px;margin:0 auto;padding:0 16px 8px;color:var(--muted);font-size:12px}
+main{max-width:1280px;margin:0 auto;padding:8px 16px 40px;display:grid;gap:16px}
+.card{background:var(--surface);border:1px solid var(--grid);border-radius:10px;padding:14px 16px}
+h2{font-size:15px;margin:0 0 10px;font-weight:650}
+h3{font-size:13px;margin:14px 0 6px;color:var(--ink2);font-weight:600}
+.grid2{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr))}
+.picks{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.pick{border:1px solid var(--grid);border-radius:8px;padding:10px 12px;cursor:pointer;background:var(--page)}
+.pick:hover,.pick:focus-visible{border-color:var(--accent);outline:none}
+.pick b{font-size:15px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:12.5px;color:var(--ink2);margin-top:6px}
+.kv span:nth-child(odd){color:var(--muted)}
+.num{font-variant-numeric:tabular-nums}
+.up{color:var(--upText)}.down{color:var(--downText)}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;padding:1px 7px;border-radius:999px;background:var(--chip);color:var(--ink2);white-space:nowrap}
+.badge.al::before{content:"▲";color:var(--up)}.badge.sat::before{content:"▼";color:var(--down)}
+.badge.warn::before{content:"!";font-weight:800;color:var(--warn)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--grid);text-align:left;white-space:nowrap}
+th{color:var(--muted);font-weight:600;font-size:12px;cursor:pointer;user-select:none;position:sticky;top:0;background:var(--surface)}
+td.r,th.r{text-align:right}
+tbody tr{cursor:pointer}tbody tr:hover{background:var(--chip)}
+.tablewrap{overflow:auto;max-height:560px}
+.scroll{overflow-x:auto;max-width:100%}
+.card{min-width:0}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+select,input,button{font:inherit;font-size:13px;padding:5px 9px;border:1px solid var(--axis);border-radius:6px;background:var(--surface);color:var(--ink)}
+button.seg{cursor:pointer}button.seg[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+#detail{display:none}
+#detail.open{display:block}
+.dhead{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline}
+.dhead .px{font-size:22px;font-weight:650}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--ink2);margin:8px 0 4px}
+.legend i{display:inline-block;width:14px;height:2px;vertical-align:middle;margin-right:5px}
+#chart{height:380px}#rsi{height:120px}
+.season{display:grid;grid-template-columns:repeat(12,1fr);gap:2px;margin-top:4px}
+.season div{font-size:10.5px;text-align:center;padding:5px 0;border-radius:3px;color:var(--ink)}
+.season .lbl{background:none;color:var(--muted);padding:0}
+ul.notes{margin:4px 0;padding-left:18px;color:var(--ink2)}
+.small{font-size:12px;color:var(--muted)}
+.empty{color:var(--muted);font-size:13px}
+@media (max-width:600px){#chart{height:300px}.dhead .px{font-size:19px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>ABD Hisse Takip</h1>
+  <span class="meta" id="meta">Yükleniyor…</span>
+</header>
+<p class="disc">Sinyaller önceden tanımlı teknik kurallara ve kamuya açık verilere göre otomatik üretilir; yatırım tavsiyesi değildir. Seans içi sinyaller kapanışta teyit edilmeden kesinleşmez.</p>
+<main>
+  <section class="card" id="detail" aria-live="polite"></section>
+
+  <section class="card">
+    <h2>Stratejik alım adayları</h2>
+    <div class="picks" id="picks"></div>
+  </section>
+
+  <div class="grid2">
+    <section class="card"><h2>Bugünün sinyalleri</h2><div id="today"></div></section>
+    <section class="card"><h2>Yaklaşan bilançolar (14 gün)</h2><div id="earn"></div></section>
+  </div>
+
+  <div class="grid2">
+    <section class="card"><h2 id="seaTitle">Mevsimsel güçlüler</h2><div id="sea"></div></section>
+    <section class="card"><h2>Sinyallerin geçmiş başarısı</h2><div id="stats"></div>
+      <p class="small">Tüm izlenen hisselerde, son ~3 yılda her sinyalden <span id="fwdN">20</span> işlem günü sonrası. AL için isabet = getiri &gt; 0, SAT için = getiri &lt; 0.</p></section>
+  </div>
+
+  <section class="card">
+    <h2>Tüm izlenen hisseler</h2>
+    <div class="filters">
+      <button class="seg" data-f="all" aria-pressed="true">Tümü</button>
+      <button class="seg" data-f="top" aria-pressed="false">İlk 50</button>
+      <button class="seg" data-f="leader" aria-pressed="false">Sektör liderleri</button>
+      <button class="seg" data-f="sig" aria-pressed="false">Sinyal verenler</button>
+      <select id="sector" aria-label="Sektör"><option value="">Tüm sektörler</option></select>
+      <input id="q" placeholder="Sembol ara" aria-label="Sembol ara" size="10">
+    </div>
+    <div class="tablewrap"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+  </section>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const fmt=(v,d=2)=>v==null||isNaN(v)?"–":Number(v).toLocaleString("tr-TR",{minimumFractionDigits:d,maximumFractionDigits:d});
+const pct=v=>v==null?"–":`<span class="${v>=0?'up':'down'}">${v>=0?'+':''}${fmt(v,2)}%</span>`;
+const mcap=v=>!v?"–":v>=1e12?fmt(v/1e12,2)+" T$":fmt(v/1e9,0)+" Mr$";
+let S,BY={},filt="all",sortKey="score",sortDir=-1,charts=[];
+
+fetch("data/summary.json",{cache:"no-store"}).then(r=>r.json()).then(d=>{S=d;d.stocks.forEach(s=>BY[s.t]=s);render();
+  const h=location.hash.slice(1);if(h&&BY[h])openDetail(h);});
+
+function render(){
+  const b=S.benchmark;
+  $("#meta").innerHTML=`Güncelleme ${S.generated} (TR) · SPY $${fmt(b.price)} ${pct(b.chg)} · Trend: ${b.trend} · ${S.stocks.length} hisse izleniyor`;
+  $("#fwdN").textContent=20;
+  // Adaylar
+  $("#picks").innerHTML=S.picks.length?S.picks.map(t=>{const s=BY[t],p=s.plan;return `<div class="pick" tabindex="0" data-t="${t}">
+    <div><b>${t}</b> <span class="small">${s.name}</span></div>
+    <div class="num">$${fmt(s.price)} ${pct(s.chg)} · Puan <b>${Math.round(s.score)}</b></div>
+    <div class="kv num"><span>Alım bölgesi</span><span>$${fmt(p.zoneLow)} – $${fmt(p.zoneHigh)}${p.wait?' · geri çekilme bekle':''}</span>
+    <span>Stop</span><span>$${fmt(p.stop)} (−${fmt(p.risk_pct,1)}%)</span>
+    <span>Hedefler</span><span>$${fmt(p.t1)} / $${fmt(p.t2)} · R/Ö ${fmt(p.rr,1)}</span>
+    <span>Trend · RSI</span><span>${s.trend} · ${fmt(s.rsi,0)}</span></div>
+    <div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">${s.recent.filter(r=>r.side=="AL").map(r=>`<span class="badge al">${r.name}</span>`).join("")}</div></div>`}).join(""):'<p class="empty">Şu an kriterleri karşılayan aday yok.</p>';
+  // Bugün
+  const sigs=S.stocks.flatMap(s=>s.signals.map(g=>({s,g})));
+  $("#today").innerHTML=sigs.length?`<div class="scroll"><table><thead><tr><th>Hisse</th><th>Sinyal</th><th class="r">Fiyat</th><th class="r">Seviyeler</th></tr></thead><tbody>${sigs.map(({s,g})=>`<tr data-t="${s.t}">
+    <td><b>${s.t}</b></td><td><span class="badge ${g.side=='AL'?'al':'sat'}">${g.side} · ${g.name}</span>${g.earningsRisk?' <span class="badge warn">Bilanço yakın</span>':''}</td>
+    <td class="r num">$${fmt(s.price)}</td><td class="r num small">${g.side=='AL'?`Stop $${fmt(g.levels.stop)} · H $${fmt(g.levels.t1)}/${fmt(g.levels.t2)}`:`Geçersizlik $${fmt(g.levels.invalidation)}`}</td></tr>`).join("")}</tbody></table></div>`
+    :'<p class="empty">Bugün henüz sinyal yok.</p>';
+  // Bilanço
+  $("#earn").innerHTML=S.earnings.length?`<div class="scroll"><table><thead><tr><th>Hisse</th><th>Tarih</th><th class="r">Gün</th><th>Beklenti</th></tr></thead><tbody>${S.earnings.map(t=>{const f=BY[t].fund;return `<tr data-t="${t}"><td><b>${t}</b></td><td class="num">${f.nextEarnings}</td><td class="r num">${f.daysToEarnings}</td><td class="small" style="white-space:normal">${f.expectation||"–"}</td></tr>`}).join("")}</tbody></table></div>`:'<p class="empty">14 gün içinde bilanço yok.</p>';
+  // Mevsimsel
+  if(S.seasonal.length){const cn=BY[S.seasonal[0]].season.curName,nn=BY[S.seasonal[0]].season.nextName;
+    $("#seaTitle").textContent=`Mevsimsel güçlüler · ${cn} (gelecek ay: ${nn})`;
+    $("#sea").innerHTML=`<div class="scroll"><table><thead><tr><th>Hisse</th><th class="r">${cn} pozitif yıl</th><th class="r">Ort. getiri</th><th class="r">SPY'a göre</th></tr></thead><tbody>${S.seasonal.map(t=>{const c=BY[t].season.cur;return `<tr data-t="${t}"><td><b>${t}</b></td><td class="r num">%${fmt(c.win,0)} (${c.n} yıl)</td><td class="r num">${pct(c.avg)}</td><td class="r num">${pct(c.excess)}</td></tr>`}).join("")}</tbody></table></div>
+    <h3>${nn} için öne çıkanlar</h3><p class="small">${S.seasonalNext.map(t=>`<b>${t}</b> %${fmt(BY[t].season.next.win,0)}`).join(" · ")}</p>`;}
+  // İstatistik
+  $("#stats").innerHTML=`<div class="scroll"><table><thead><tr><th>Sinyal</th><th class="r">Adet</th><th class="r">İsabet</th><th class="r">Ort. getiri</th></tr></thead><tbody>${Object.entries(S.stats).map(([k,v])=>`<tr><td><span class="badge ${S.signalDefs[k][0]=='AL'?'al':'sat'}">${S.signalDefs[k][1]}</span></td><td class="r num">${v.n}</td><td class="r num">%${fmt(v.hit,1)}</td><td class="r num">${pct(v.avg)}</td></tr>`).join("")}</tbody></table></div>`;
+  // Sektör filtresi
+  const secs=[...new Set(S.stocks.map(s=>s.sector))].sort();
+  $("#sector").innerHTML='<option value="">Tüm sektörler</option>'+secs.map(s=>`<option>${s}</option>`).join("");
+  table();
+  document.querySelectorAll("[data-t]").forEach(el=>{el.onclick=()=>openDetail(el.dataset.t);el.onkeydown=e=>{if(e.key=="Enter")openDetail(el.dataset.t)}});
+}
+
+const COLS=[["t","Hisse"],["sector","Sektör"],["mcap","Piy. değeri","r"],["price","Fiyat","r"],["chg","Gün %","r"],["trend","Trend"],["rsi","RSI","r"],["rs3m","3A SPY'a göre","r"],["score","Puan","r"],["sig","Sinyal"],["earn","Bilanço"]];
+function table(){
+  const q=$("#q").value.trim().toUpperCase(),sec=$("#sector").value;
+  let rows=S.stocks.filter(s=>(filt=="all"||(filt=="top"&&s.isTop)||(filt=="leader"&&s.leader)||(filt=="sig"&&(s.signals.length||s.recent.length)))&&(!sec||s.sector==sec)&&(!q||s.t.includes(q)));
+  const val=(s,k)=>k=="earn"?(s.fund.daysToEarnings??999):k=="sig"?s.recent.length:s[k];
+  rows.sort((a,b)=>{const x=val(a,sortKey),y=val(b,sortKey);return (x>y?1:x<y?-1:0)*sortDir});
+  $("#tbl thead").innerHTML="<tr>"+COLS.map(([k,l,c])=>`<th class="${c||''}" data-k="${k}">${l}${sortKey==k?(sortDir<0?" ↓":" ↑"):""}</th>`).join("")+"</tr>";
+  $("#tbl tbody").innerHTML=rows.map(s=>`<tr data-t="${s.t}"><td><b>${s.t}</b>${s.rank?` <span class="small">#${s.rank}</span>`:''}</td><td class="small">${s.sector}</td>
+   <td class="r num">${mcap(s.mcap)}</td><td class="r num">$${fmt(s.price)}</td><td class="r num">${pct(s.chg)}</td><td>${s.trend}</td><td class="r num">${fmt(s.rsi,0)}</td>
+   <td class="r num">${pct(s.rs3m)}</td><td class="r num"><b>${Math.round(s.score)}</b></td>
+   <td>${s.recent.slice(-2).map(r=>`<span class="badge ${r.side=='AL'?'al':'sat'}">${r.name}</span>`).join(" ")}</td>
+   <td class="num small">${s.fund.daysToEarnings!=null&&s.fund.daysToEarnings>=0?`${s.fund.nextEarnings} (${s.fund.daysToEarnings}g)`:"–"}</td></tr>`).join("");
+  document.querySelectorAll("#tbl th").forEach(th=>th.onclick=()=>{const k=th.dataset.k;sortDir=sortKey==k?-sortDir:-1;sortKey=k;table()});
+  document.querySelectorAll("#tbl tbody tr").forEach(el=>el.onclick=()=>openDetail(el.dataset.t));
+}
+document.querySelectorAll("button.seg").forEach(b=>b.onclick=()=>{filt=b.dataset.f;document.querySelectorAll("button.seg").forEach(x=>x.setAttribute("aria-pressed",x==b));table()});
+$("#sector").onchange=table;$("#q").oninput=table;
+
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()}
+function seasonCell(c){if(!c)return `<div style="background:var(--chip)">–</div>`;
+  const a=Math.max(-1,Math.min(1,c.avg/4));const col=a>=0?`rgba(12,163,12,${.15+.6*a})`:`rgba(208,59,59,${.15+.6*-a})`;
+  return `<div style="background:${col}" title="Ort. ${fmt(c.avg)}% · %${fmt(c.win,0)} pozitif · ${c.n} yıl">${c.avg>0?'+':''}${fmt(c.avg,1)}</div>`}
+
+async function openDetail(t){
+  const s=BY[t];if(!s)return;location.hash=t;
+  const c=await (await fetch(`data/c/${t}.json`,{cache:"no-store"})).json();
+  const f=s.fund,se=s.season,p=s.plan;
+  const AY=["Oca","Şub","Mar","Nis","May","Haz","Tem","Ağu","Eyl","Eki","Kas","Ara"];
+  $("#detail").className="card open";
+  $("#detail").innerHTML=`<div class="dhead"><h2 style="margin:0">${t} · ${s.name}</h2><span class="px num">$${fmt(s.price)}</span>${pct(s.chg)}
+    <span class="small">${s.sector}${s.rank?` · Piyasa değeri sırası #${s.rank}`:''} · ${mcap(s.mcap)}</span>
+    <button id="close" style="margin-left:auto">Kapat</button></div>
+    <div class="legend"><span><i style="background:var(--s1)"></i>EMA 20</span><span><i style="background:var(--s2)"></i>EMA 50</span><span><i style="background:var(--s3)"></i>EMA 200</span><span>▲ AL sinyali ▼ SAT sinyali</span>${p?'<span>Kesikli çizgiler: alım bölgesi, stop, hedefler</span>':''}<span id="hov" class="num"></span></div>
+    <div id="chart"></div><div class="small" style="margin-top:6px">RSI (14) · 30 / 70 seviyeleri</div><div id="rsi"></div>
+    <div class="grid2" style="margin-top:8px">
+      <div><h3>Teknik görünüm</h3><div class="kv num"><span>Trend</span><span>${s.trend}</span><span>RSI</span><span>${fmt(s.rsi,1)}</span>
+        <span>EMA 20 / 50 / 200</span><span>$${fmt(s.ema20)} / $${fmt(s.ema50)} / $${fmt(s.ema200)}</span>
+        <span>20g kırılım / destek</span><span>$${fmt(s.hh20)} / $${fmt(s.ll20)}</span><span>60g direnç / destek</span><span>$${fmt(s.res60)} / $${fmt(s.sup60)}</span>
+        <span>ATR (oynaklık)</span><span>$${fmt(s.atr)}</span><span>Hacim / 20g ort.</span><span>${fmt(s.volr,2)}x</span>
+        <span>Puan</span><span><b>${Math.round(s.score)}</b>/100 (teknik ${s.parts.teknik}/40 · göreceli ${fmt(s.parts.goreceli,0)}/20 · temel ${s.parts.temel}/25 · mevsim ${fmt(s.parts.mevsim,0)}/15)</span></div>
+        ${p?`<h3>Stratejik plan</h3><div class="kv num"><span>Alım bölgesi</span><span>$${fmt(p.zoneLow)} – $${fmt(p.zoneHigh)}${p.wait?' (geri çekilme bekle)':''}</span><span>Stop</span><span>$${fmt(p.stop)} (−${fmt(p.risk_pct,1)}%)</span><span>Hedef 1 / 2</span><span>$${fmt(p.t1)} / $${fmt(p.t2)}</span><span>Risk/Ödül</span><span>${fmt(p.rr,1)}</span></div>`:''}
+        ${s.signals.map(g=>`<p><span class="badge ${g.side=='AL'?'al':'sat'}">${g.side} · ${g.name}</span> <span class="small">${g.why}</span></p>`).join("")}
+      </div>
+      <div><h3>Bilanço ve beklentiler</h3>
+        <div class="kv num"><span>Sonraki bilanço</span><span>${f.nextEarnings?`${f.nextEarnings} (${f.daysToEarnings} gün)`:"–"}</span>
+        <span>Beklenti</span><span style="white-space:normal">${f.expectation||"–"}</span>
+        <span>Analist görüşü</span><span>${f.recommendation||"–"}${f.recMean?` (${fmt(f.recMean,1)}; 1 = güçlü al, 5 = sat)`:''}</span></div>
+        <ul class="notes">${f.notes.map(n=>`<li>${n}</li>`).join("")}</ul>
+        ${f.history.length?`<div class="scroll"><table><thead><tr><th>Çeyrek</th><th class="r">Beklenti</th><th class="r">Gerçekleşen</th><th class="r">Sürpriz</th></tr></thead><tbody>${f.history.map(h=>`<tr><td class="num">${h.date}</td><td class="r num">${h.est!=null?'$'+fmt(h.est):'–'}</td><td class="r num">$${fmt(h.actual)}</td><td class="r num">${pct(h.surprise)}</td></tr>`).join("")}</tbody></table></div>`:''}
+        ${se?`<h3>Mevsimsellik · son ${se.table.find(x=>x)?.n||''} yıl, aylık ort. getiri %</h3><div class="season">${AY.map(a=>`<div class="lbl">${a}</div>`).join("")}${se.table.map(seasonCell).join("")}</div>`:''}
+      </div></div>`;
+  $("#close").onclick=()=>{$("#detail").className="card";history.replaceState(null,"",location.pathname)};
+  drawCharts(c,s);
+  $("#detail").scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+function drawCharts(c,s){
+  charts.forEach(ch=>ch.remove());charts=[];
+  const base={layout:{background:{color:css("--surface")},textColor:css("--muted"),fontSize:11},
+    grid:{vertLines:{visible:false},horzLines:{color:css("--grid")}},rightPriceScale:{borderColor:css("--axis")},
+    timeScale:{borderColor:css("--axis")},crosshair:{mode:0},autoSize:true};
+  const ch=LightweightCharts.createChart($("#chart"),base);charts.push(ch);
+  const up=css("--up"),dn=css("--down");
+  const cs=ch.addCandlestickSeries({upColor:up,downColor:dn,borderVisible:false,wickUpColor:up,wickDownColor:dn});
+  cs.setData(c.ohlc.map(r=>({time:r[0],open:r[1],high:r[2],low:r[3],close:r[4]})));
+  const line=(arr,col)=>{const l=ch.addLineSeries({color:col,lineWidth:2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
+    l.setData(c.ohlc.map((r,i)=>({time:r[0],value:arr[i]})).filter(x=>x.value!=null));return l};
+  line(c.ema20,css("--s1"));line(c.ema50,css("--s2"));line(c.ema200,css("--s3"));
+  const short={B_BREAKOUT:"Kırılım",B_PULLBACK:"Geri çek.",B_OVERSOLD:"Aşırı satım",B_GOLDEN:"Altın k.",S_BREAKDOWN:"Destek kır.",S_TREND:"Trend boz.",S_OVERBOUGHT:"Kâr al",S_DEATH:"Ölüm k."};
+  cs.setMarkers(c.markers.map(m=>({time:m.t,position:m.side=="AL"?"belowBar":"aboveBar",color:m.side=="AL"?up:dn,shape:m.side=="AL"?"arrowUp":"arrowDown",text:short[m.code]||""})));
+  if(s.plan){const pl=(p,t,col)=>cs.createPriceLine({price:p,color:col,lineWidth:1,lineStyle:2,axisLabelVisible:true,title:t});
+    pl(s.plan.zoneLow,"Bölge alt",css("--s1"));pl(s.plan.zoneHigh,"Bölge üst",css("--s1"));pl(s.plan.stop,"Stop",dn);pl(s.plan.t1,"H1",up);pl(s.plan.t2,"H2",up);}
+  const rc=LightweightCharts.createChart($("#rsi"),{...base,timeScale:{...base.timeScale,visible:false}});charts.push(rc);
+  const rs=rc.addLineSeries({color:css("--s1"),lineWidth:2,priceLineVisible:false});
+  rs.setData(c.ohlc.map((r,i)=>({time:r[0],value:c.rsi[i]})).filter(x=>x.value!=null));
+  [30,70].forEach(v=>rs.createPriceLine({price:v,color:css("--axis"),lineWidth:1,lineStyle:2,axisLabelVisible:false}));
+  ch.timeScale().subscribeVisibleLogicalRangeChange(r=>r&&rc.timeScale().setVisibleLogicalRange(r));
+  ch.timeScale().setVisibleLogicalRange({from:c.ohlc.length-130,to:c.ohlc.length+3});
+  ch.subscribeCrosshairMove(p=>{const d=p.time&&p.seriesData.get(cs);const i=d?c.ohlc.findIndex(r=>r[0]==p.time):-1;
+    $("#hov").innerHTML=d?`${p.time} · A ${fmt(d.open)} Y ${fmt(d.high)} D ${fmt(d.low)} K <b>${fmt(d.close)}</b> · RSI ${fmt(c.rsi[i],0)}`:""});
+}
+</script>
+</body>
+</html>

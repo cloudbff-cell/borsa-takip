@@ -1,0 +1,82 @@
+name: Hisse tarama
+
+on:
+  schedule:
+    # Saatler UTC. Hafta içi her saat başı +5 dk çalışır; betik New York saatine
+    # bakarak açılış öncesi / seans içi / kapanış sonrası modunu kendisi seçer.
+    # Yaz/kış saati farkı otomatik karşılanır.
+    - cron: "5 11-22 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Mod (auto, pre, intraday, post)"
+        default: "post"
+        required: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: tarama
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: github-pages
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Önbelleği geri yükle (temel veriler, gönderilen sinyaller)
+        uses: actions/cache/restore@v4
+        with:
+          path: cache
+          key: tarama-${{ github.run_id }}
+          restore-keys: tarama-
+
+      - name: Taramayı çalıştır
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ALPACA_KEY_ID: ${{ secrets.ALPACA_KEY_ID }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          # Botu açıp kapatmak için: Settings > Secrets and variables > Actions > Variables
+          TRADING_ENABLED: ${{ vars.TRADING_ENABLED }}
+          ALPACA_PAPER: ${{ vars.ALPACA_PAPER || 'true' }}
+          PAGES_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            python -m engine.run --mode "${{ inputs.mode || 'post' }}" --force
+          else
+            python -m engine.run --mode auto
+          fi
+
+      - name: Önbelleği kaydet
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: cache
+          key: tarama-${{ github.run_id }}
+
+      - name: Panel var mı?
+        id: chk
+        run: test -f site/data/summary.json && echo "ok=1" >> "$GITHUB_OUTPUT" || echo "ok=0" >> "$GITHUB_OUTPUT"
+
+      - if: steps.chk.outputs.ok == '1'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - if: steps.chk.outputs.ok == '1'
+        uses: actions/deploy-pages@v4

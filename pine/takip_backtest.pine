@@ -1,0 +1,48 @@
+//@version=6
+// ABD Hisse Takip – geçmiş veriyle test (backtest). Sadece uzun (long) pozisyon.
+// Giriş: herhangi bir AL kuralı. Çıkış: ATR stop, Hedef 2 ya da herhangi bir SAT kuralı.
+// Sonuçları "Strateji Test Aracı" sekmesinde görürsün. Komisyon ve kayma payı varsayılan olarak eklendi.
+strategy("ABD Hisse Takip – Backtest", overlay = true, initial_capital = 10000,
+     default_qty_type = strategy.percent_of_equity, default_qty_value = 20,
+     commission_type = strategy.commission.percent, commission_value = 0.05, slippage = 2)
+
+rsiOS = input.int(30, "RSI aşırı satım")
+rsiPB = input.int(40, "RSI geri çekilme")
+rsiOB = input.int(70, "RSI aşırı alım")
+brkLen = input.int(20, "Kırılım periyodu")
+volMult = input.float(1.5, "Hacim çarpanı")
+stopAtr = input.float(2.0, "Stop (ATR)")
+t2Atr = input.float(4.0, "Hedef (ATR)")
+useSellExit = input.bool(true, "SAT sinyalinde çık")
+
+e50 = ta.ema(close, 50)
+e200 = ta.ema(close, 200)
+r = ta.rsi(close, 14)
+[m, s, hist] = ta.macd(close, 12, 26, 9)
+a = ta.atr(14)
+hh = ta.highest(high, brkLen)[1]
+ll = ta.lowest(low, brkLen)[1]
+vavg = ta.sma(volume, 20)[1]
+trendUp = close > e50 and e50 > e200
+trendDn = close < e50 and e50 < e200
+
+buy = (close > hh and close[1] <= hh[1] and volume >= volMult * vavg and not trendDn)
+     or (trendUp and ta.crossover(r, rsiPB))
+     or (ta.crossover(r, rsiOS) and close > e200)
+     or ta.crossover(e50, e200)
+sell = (close < ll and close[1] >= ll[1]) or (ta.crossunder(close, e50) and hist < 0)
+     or ta.crossunder(r, rsiOB) or ta.crossunder(e50, e200)
+
+var float stopPx = na
+var float tgtPx = na
+if buy and strategy.position_size == 0
+    strategy.entry("AL", strategy.long)
+    stopPx := close - stopAtr * a
+    tgtPx := close + t2Atr * a
+if strategy.position_size > 0
+    strategy.exit("Çıkış", "AL", stop = stopPx, limit = tgtPx)
+    if useSellExit and sell
+        strategy.close("AL", comment = "SAT sinyali")
+
+plot(strategy.position_size > 0 ? stopPx : na, "Stop", color = #d03b3b, style = plot.style_linebr)
+plot(strategy.position_size > 0 ? tgtPx : na, "Hedef", color = #0ca30c, style = plot.style_linebr)

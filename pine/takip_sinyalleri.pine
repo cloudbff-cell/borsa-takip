@@ -1,0 +1,75 @@
+//@version=6
+// ABD Hisse Takip – Python tarama motoruyla AYNI kurallar.
+// Kullanım: TradingView > Pine Editor > yapıştır > "Grafiğe ekle".
+// Alarm: grafikte sağ tık > Alarm ekle > Koşul: bu gösterge > "Herhangi bir AL" veya "Herhangi bir SAT".
+indicator("ABD Hisse Takip – Trend/RSI/Kırılım", overlay = true, max_labels_count = 500)
+
+emaFastLen = input.int(20, "EMA hızlı")
+emaMidLen  = input.int(50, "EMA orta")
+emaSlowLen = input.int(200, "EMA yavaş")
+rsiLen     = input.int(14, "RSI uzunluk")
+rsiOS      = input.int(30, "RSI aşırı satım")
+rsiPB      = input.int(40, "RSI geri çekilme seviyesi")
+rsiOB      = input.int(70, "RSI aşırı alım")
+brkLen     = input.int(20, "Kırılım periyodu")
+volMult    = input.float(1.5, "Hacim çarpanı")
+atrLen     = input.int(14, "ATR uzunluk")
+stopAtr    = input.float(2.0, "Stop (ATR)")
+t1Atr      = input.float(2.0, "Hedef 1 (ATR)")
+t2Atr      = input.float(4.0, "Hedef 2 (ATR)")
+showLevels = input.bool(true, "Son AL sinyalinde stop/hedef çiz")
+
+e20  = ta.ema(close, emaFastLen)
+e50  = ta.ema(close, emaMidLen)
+e200 = ta.ema(close, emaSlowLen)
+r    = ta.rsi(close, rsiLen)
+[macdLine, sigLine, hist] = ta.macd(close, 12, 26, 9)
+a    = ta.atr(atrLen)
+hh   = ta.highest(high, brkLen)[1]
+ll   = ta.lowest(low, brkLen)[1]
+vavg = ta.sma(volume, 20)[1]
+
+trendUp = close > e50 and e50 > e200
+trendDn = close < e50 and e50 < e200
+
+bBreakout = close > hh and close[1] <= hh[1] and volume >= volMult * vavg and not trendDn
+bPullback = trendUp and ta.crossover(r, rsiPB)
+bOversold = ta.crossover(r, rsiOS) and close > e200
+bGolden   = ta.crossover(e50, e200)
+sBreakdown  = close < ll and close[1] >= ll[1]
+sTrend      = ta.crossunder(close, e50) and hist < 0
+sOverbought = ta.crossunder(r, rsiOB)
+sDeath      = ta.crossunder(e50, e200)
+
+anyBuy  = bBreakout or bPullback or bOversold or bGolden
+anySell = sBreakdown or sTrend or sOverbought or sDeath
+
+plot(e20,  "EMA 20",  color = color.new(#2a78d6, 0), linewidth = 2)
+plot(e50,  "EMA 50",  color = color.new(#eb6834, 0), linewidth = 2)
+plot(e200, "EMA 200", color = color.new(#4a3aa7, 0), linewidth = 2)
+
+buyText  = bBreakout ? "Kırılım" : bPullback ? "Geri çek." : bOversold ? "Aşırı satım" : "Altın k."
+sellText = sBreakdown ? "Destek kır." : sTrend ? "Trend boz." : sOverbought ? "Kâr al" : "Ölüm k."
+if anyBuy
+    label.new(bar_index, low, "AL\n" + buyText, style = label.style_label_up, color = color.new(#0ca30c, 0), textcolor = color.white, size = size.small)
+if anySell
+    label.new(bar_index, high, "SAT\n" + sellText, style = label.style_label_down, color = color.new(#d03b3b, 0), textcolor = color.white, size = size.small)
+
+// Son AL sinyalinin stop ve hedef çizgileri
+var line lStop = na
+var line lT1 = na
+var line lT2 = na
+if showLevels and anyBuy and barstate.isconfirmed
+    line.delete(lStop)
+    line.delete(lT1)
+    line.delete(lT2)
+    lStop := line.new(bar_index, close - stopAtr * a, bar_index + 20, close - stopAtr * a, color = #d03b3b, style = line.style_dashed)
+    lT1   := line.new(bar_index, close + t1Atr * a,  bar_index + 20, close + t1Atr * a,  color = #0ca30c, style = line.style_dashed)
+    lT2   := line.new(bar_index, close + t2Atr * a,  bar_index + 20, close + t2Atr * a,  color = #0ca30c, style = line.style_dashed)
+
+alertcondition(anyBuy,  "Herhangi bir AL",  "{{ticker}} AL sinyali – fiyat {{close}}")
+alertcondition(anySell, "Herhangi bir SAT", "{{ticker}} SAT sinyali – fiyat {{close}}")
+alertcondition(bBreakout, "AL: Hacimli kırılım", "{{ticker}} hacimli kırılım – {{close}}")
+alertcondition(bPullback, "AL: Trend içi geri çekilme", "{{ticker}} trend içi geri çekilme – {{close}}")
+alertcondition(sBreakdown, "SAT: Destek kırılımı", "{{ticker}} destek kırılımı – {{close}}")
+alertcondition(sTrend, "SAT: Trend bozulması", "{{ticker}} trend bozulması – {{close}}")
