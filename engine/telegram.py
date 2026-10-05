@@ -44,6 +44,10 @@ def send(text: str) -> bool:
                 STATUS["error"] = str(r.status_code)
             ok = False
     STATUS["result"] = "gönderildi" if ok else "hata"
+    err = STATUS.get("error", "") if not ok else ""
+    STATUS["hint"] = ("token geçersiz (BotFather'daki satırın tamamı olmalı)" if err.startswith("401") else
+                      "chat ID yanlış ya da bota Start basılmamış" if ("chat not found" in err or err.startswith("403")) else
+                      "token biçimi bozuk" if err.startswith("404") else "")
     if ok:
         print(f"Telegram: {len(chunks)} mesaj gönderildi.")
     return ok
