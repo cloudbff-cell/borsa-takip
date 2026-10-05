@@ -1,4 +1,5 @@
 import os
+import re
 
 import requests
 
@@ -7,8 +8,11 @@ STATUS = {}
 
 
 def send(text: str) -> bool:
-    token, chat = os.getenv("TELEGRAM_BOT_TOKEN"), os.getenv("TELEGRAM_CHAT_ID")
-    STATUS.update({"tokenSet": bool(token), "chatIdSet": bool(chat),
+    token = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip().strip('"').strip("'")
+    if token.lower().startswith("bot"):
+        token = token[3:]          # yanlışlıkla "bot123:ABC" şeklinde girilmişse
+    chat = (os.getenv("TELEGRAM_CHAT_ID") or "").strip().strip('"').strip("'")
+    STATUS.update({"tokenSet": bool(token), "tokenFormatOk": bool(re.fullmatch(r"\d{6,12}:[A-Za-z0-9_-]{30,}", token)), "chatIdSet": bool(chat),
                    "chatIdLooksNumeric": bool(chat) and chat.strip().lstrip("-").isdigit()})
     if not token or not chat:
         STATUS["result"] = "secret eksik"
