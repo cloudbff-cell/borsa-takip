@@ -2,8 +2,11 @@
 
 Varsayılan: SANAL PARA (paper). Gerçek hesaba geçmek için ALPACA_PAPER=false gerekir.
 Emir mantığı:
-  Giriş  : Stratejik aday listesindeki hisse, fiyat alım bölgesine girdiğinde (seans içi),
-           stop ve kâr al emirleriyle birlikte (bracket) piyasa emri.
+  Giriş  : Seans içi her taramada, stratejik adaylar için alım bölgesinin üst sınırına LİMİTLİ
+           alış emri (bağlı stop ve kâr al ile) konur. Fiyat bölgeye indiği an Alpaca emri
+           gerçekleştirir; taramayı beklemez. Aday listesinden çıkan ya da bölgenin altına düşen
+           hisselerin bekleyen emri iptal edilir, seviyesi değişenler güncellenir.
+           Kapanışta gerçekleşmemiş giriş emirleri iptal edilir.
   Boyut  : (sermaye x RISK_PER_TRADE) / (giriş - stop), tek pozisyon en fazla MAX_POSITION_PCT.
   Çıkış  : stop / kâr al emri, kapanışta teyitli SAT sinyali (EXIT_SIGNALS) ya da bilanço öncesi.
   Koruma : en fazla MAX_POSITIONS pozisyon, günlük kayıp limiti, hisse başına günde tek giriş.
@@ -44,10 +47,12 @@ class Alpaca:
     def open_orders(self):
         return self._r("GET", "/v2/orders", params={"status": "open", "nested": "true", "limit": 500})
 
-    def bracket_buy(self, sym, qty, stop, tp, client_id):
+    def bracket_buy(self, sym, qty, limit, stop, tp, client_id):
+        """Limitli alış + bağlı stop ve kâr al. GTC: bacaklar gece de korur; gerçekleşmeyen
+        giriş emirleri kapanışta bot tarafından iptal edilir."""
         return self._r("POST", "/v2/orders", json={
-            "symbol": sym, "qty": str(qty), "side": "buy", "type": "market", "time_in_force": "gtc",
-            "order_class": "bracket", "client_order_id": client_id,
+            "symbol": sym, "qty": str(qty), "side": "buy", "type": "limit", "limit_price": f"{limit:.2f}",
+            "time_in_force": "gtc", "order_class": "bracket", "client_order_id": client_id,
             "take_profit": {"limit_price": f"{tp:.2f}"}, "stop_loss": {"stop_price": f"{stop:.2f}"}})
 
     def replace_stop(self, order_id, stop):
@@ -142,6 +147,8 @@ def run(summary, by, mode, state, client=None):
                  "positions": [{"sym": k, "qty": v["qty"], "entry": float(v["avg_entry_price"]),
                                 "price": float(v["current_price"]), "pl": float(v["unrealized_pl"]),
                                 "plpc": float(v["unrealized_plpc"]) * 100} for k, v in pos.items()]}
+    if mode == "post":
+        msgs += cancel_stale_entries(api, orders, tag)
     if mode != "intraday":
         return msgs, portfolio
     if day_pl <= -C.DAILY_LOSS_LIMIT:
@@ -149,41 +156,99 @@ def run(summary, by, mode, state, client=None):
         if key not in state["sent"]:
             state["sent"][key] = today
             msgs.append(f"{tag} ⛔ Günlük kayıp {day_pl*100:.2f}% – limit aşıldı, bugün yeni alım yapılmayacak.")
+            msgs += cancel_stale_entries(api, orders, tag)
         return msgs, portfolio
 
-    pending_buys = {o["symbol"] for o in orders if o["side"] == "buy"}
-    slots = C.MAX_POSITIONS - len(pos) - len(pending_buys - set(pos))
-    for t in summary["picks"]:
+    return msgs + _manage_entries(api, summary, by, state, pos, orders, equity, bp, tag, today), portfolio
+
+
+def _bot_entries(orders):
+    return {o["symbol"]: o for o in orders
+            if o["side"] == "buy" and str(o.get("client_order_id", "")).startswith("bt-")
+            and o.get("status") in ("new", "accepted", "pending_new", "held", None)}
+
+
+def cancel_stale_entries(api, orders, tag):
+    """Kapanışta gerçekleşmemiş giriş emirlerini iptal et."""
+    msgs = []
+    for sym, o in _bot_entries(orders).items():
+        try:
+            api.cancel(o["id"])
+            msgs.append(f"{tag} ⏹ {sym} gerçekleşmeyen limitli alış emri gün sonunda iptal edildi")
+        except RuntimeError as e:
+            print(e)
+    return msgs
+
+
+def _size(equity, bp, limit, stop):
+    risk_ps = limit - stop
+    if risk_ps <= 0:
+        return 0, 0
+    qty = math.floor(min(equity * C.RISK_PER_TRADE / risk_ps, equity * C.MAX_POSITION_PCT / limit, bp * 0.95 / limit))
+    return max(qty, 0), risk_ps
+
+
+def _manage_entries(api, summary, by, state, pos, orders, equity, bp, tag, today):
+    msgs = []
+    entries = _bot_entries(orders)
+    picks = summary["picks"]
+    # 1) Bekleyen emirleri gözden geçir: aday değilse / bölge altına düştüyse iptal, seviye değiştiyse güncelle
+    for sym, o in list(entries.items()):
+        s, pl = by.get(sym), (by.get(sym) or {}).get("plan")
+        why = None
+        if sym not in picks or not pl:
+            why = "artık aday değil"
+        elif s["price"] < pl["zoneLow"]:
+            why = "fiyat alım bölgesinin altına indi"
+        if why:
+            try:
+                api.cancel(o["id"])
+                del entries[sym]
+                msgs.append(f"{tag} ⏹ <b>{sym}</b> bekleyen alış emri iptal ({why})")
+                _log({"sym": sym, "side": "cancel", "reason": why})
+            except RuntimeError as e:
+                print(e)
+            continue
+        old = float(o.get("limit_price") or 0)
+        if old and abs(pl["zoneHigh"] - old) / old > 0.01:
+            try:
+                api.cancel(o["id"])
+                del entries[sym]
+                state["sent"].pop(f"entry|{today}|{sym}", None)   # aşağıda yeni seviyeyle yeniden konur
+                _log({"sym": sym, "side": "reprice", "old": old, "new": pl["zoneHigh"]})
+            except RuntimeError as e:
+                print(e)
+
+    # 2) Yeni limitli emirler
+    reserved = sum(float(o.get("qty", 0)) * float(o.get("limit_price") or 0) for o in entries.values())
+    bp -= reserved
+    slots = C.MAX_POSITIONS - len(pos) - len(set(entries) - set(pos))
+    for t in picks:
         if slots <= 0:
             break
         s = by[t]
         pl = s.get("plan")
-        if not pl or t in pos or t in pending_buys:
-            continue
         key = f"entry|{today}|{t}"
-        if key in state["sent"]:
+        if not pl or t in pos or t in entries or key in state["sent"]:
             continue
         price = s["price"]
-        if not (pl["zoneLow"] <= price <= pl["zoneHigh"] * 1.002):
+        if price < pl["zoneLow"]:
+            continue   # bölgenin altına düşmüş: düşen bıçağı tutma
+        limit = min(price, pl["zoneHigh"])
+        stop, tp = pl["stop"], pl[C.TAKE_PROFIT]
+        qty, risk_ps = _size(equity, bp, limit, stop)
+        if qty < 1 or tp <= limit:
             continue
-        stop = pl["stop"]
-        tp = pl[C.TAKE_PROFIT]
-        risk_ps = price - stop
-        if risk_ps <= 0:
-            continue
-        qty = math.floor(min(equity * C.RISK_PER_TRADE / risk_ps,
-                             equity * C.MAX_POSITION_PCT / price, bp * 0.95 / price))
-        if qty < 1:
-            continue
-        state["sent"][key] = today
         try:
-            api.bracket_buy(t, qty, stop, tp, f"bt-{today}-{t}")
+            api.bracket_buy(t, qty, limit, stop, tp, f"bt-{today}-{t}-{datetime.now().strftime('%H%M')}")
+            state["sent"][key] = today
             slots -= 1
-            bp -= qty * price
-            msgs.append(f"{tag} 🟢 <b>{t}</b> ALIŞ emri · {qty} adet ~${price:,.2f} (≈${qty*price:,.0f})\n"
+            bp -= qty * limit
+            now = "fiyat bölgede, hemen gerçekleşebilir" if price <= pl["zoneHigh"] * 1.002 else f"şu an ${price:,.2f}, geri çekilme bekleniyor"
+            msgs.append(f"{tag} 🟢 <b>{t}</b> LİMİTLİ ALIŞ emri · {qty} adet @ ${limit:,.2f} (≈${qty*limit:,.0f}) – {now}\n"
                         f"   Stop ${stop:,.2f} · risk ≈${qty*risk_ps:,.0f} = sermayenin %{qty*risk_ps/equity*100:.1f} · Kâr al ${tp:,.2f}\n"
-                        f"   Gerekçe: puan {s['score']:.0f}, {s['trend']} trend, fiyat alım bölgesinde")
-            _log({"sym": t, "side": "buy", "qty": qty, "price": price, "stop": stop, "tp": tp})
+                        f"   Gerekçe: puan {s['score']:.0f}, {s['trend']} trend")
+            _log({"sym": t, "side": "buy_limit", "qty": qty, "limit": limit, "stop": stop, "tp": tp})
         except RuntimeError as e:
             msgs.append(f"⚠️ {t} alış emri verilemedi: {e}")
-    return msgs, portfolio
+    return msgs

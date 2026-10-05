@@ -11,8 +11,8 @@ from engine import run, trader  # noqa: E402
 class FakeAlpaca:
     paper = True
 
-    def __init__(self, day_pl=0.0, positions=None):
-        self.calls, self.day_pl, self._pos = [], day_pl, positions or []
+    def __init__(self, day_pl=0.0, positions=None, entries=None):
+        self.calls, self.day_pl, self._pos, self._entries = [], day_pl, positions or [], entries or []
 
     def account(self):
         return {"equity": str(100000 * (1 + self.day_pl)), "last_equity": "100000", "buying_power": "200000"}
@@ -22,7 +22,8 @@ class FakeAlpaca:
 
     def open_orders(self):
         return [{"id": "o1", "symbol": p["symbol"], "side": "sell", "type": "limit", "legs": [
-            {"id": "o2", "symbol": p["symbol"], "side": "sell", "type": "stop", "stop_price": "1"}]} for p in self._pos]
+            {"id": "o2", "symbol": p["symbol"], "side": "sell", "type": "stop", "stop_price": "1"}]} for p in self._pos] \
+            + self._entries
 
     def bracket_buy(self, *a):
         self.calls.append(("buy",) + a)
@@ -60,8 +61,9 @@ def main():
     msgs, port = trader.run(summary, by, "intraday", state, f)
     buys = [c for c in f.calls if c[0] == "buy"]
     assert buys and buys[0][1] == t0, f.calls
-    sym, qty, stop, tp = buys[0][1:5]
-    risk = qty * (by[t0]["price"] - stop)
+    sym, qty, limit, stop, tp = buys[0][1:6]
+    assert limit <= by[t0]["plan"]["zoneHigh"] + 1e-9
+    risk = qty * (limit - stop)
     assert risk <= 100000 * C.RISK_PER_TRADE + 1, risk
     assert qty * by[t0]["price"] <= 100000 * C.MAX_POSITION_PCT + 1
     print("ALIŞ:", msgs[0].replace("\n", " | "))
@@ -104,6 +106,31 @@ def main():
     f6 = FakeAlpaca(positions=pos)
     trader.run(summary, by, "intraday", {"sent": {}}, f6)
     assert ("stop", "o2", entry) in f6.calls, f6.calls
+    # Fiyat bölgenin üstündeyken de limitli emir bölge üst sınırına konmalı
+    t1 = summary["picks"][1]
+    by[t1]["price"] = by[t1]["plan"]["zoneHigh"] * 1.03
+    f7 = FakeAlpaca()
+    m7, _ = trader.run(summary, by, "intraday", {"sent": {}}, f7)
+    b7 = [c for c in f7.calls if c[0] == "buy" and c[1] == t1]
+    assert b7 and abs(b7[0][3] - by[t1]["plan"]["zoneHigh"]) < 1e-6, f7.calls
+    print("LİMİT:", [m for m in m7 if t1 in m][0].split("\n")[0])
+
+    # Aday listesinden çıkan hissenin bekleyen emri iptal edilmeli; kapanışta kalanlar iptal
+    ent = [{"id": "e1", "symbol": "ZZZ", "side": "buy", "client_order_id": "bt-x", "status": "new", "qty": "5", "limit_price": "10"}]
+    f8 = FakeAlpaca(entries=ent)
+    m8, _ = trader.run(summary, by, "intraday", {"sent": {}}, f8)
+    assert ("cancel", "e1") in f8.calls and "artık aday değil" in " ".join(m8)
+    ent2 = [{"id": "e2", "symbol": t1, "side": "buy", "client_order_id": "bt-y", "status": "new", "qty": "5",
+             "limit_price": str(by[t1]["plan"]["zoneHigh"])}]
+    f9 = FakeAlpaca(entries=ent2)
+    trader.run(summary, by, "post", {"sent": {}}, f9)
+    assert ("cancel", "e2") in f9.calls
+    # Seviye %1'den fazla değiştiyse iptal + yeniden koyma
+    ent3 = [{"id": "e3", "symbol": t1, "side": "buy", "client_order_id": "bt-z", "status": "new", "qty": "5",
+             "limit_price": str(by[t1]["plan"]["zoneHigh"] * 0.95)}]
+    f10 = FakeAlpaca(entries=ent3)
+    trader.run(summary, by, "intraday", {"sent": {f"entry|{summary['lastBar']}|{t1}": "x"}}, f10)
+    assert ("cancel", "e3") in f10.calls and [c for c in f10.calls if c[0] == "buy" and c[1] == t1]
     print("Tüm işlem testleri geçti.")
 
 

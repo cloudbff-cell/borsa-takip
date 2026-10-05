@@ -58,3 +58,10 @@ cd site && python -m http.server       # http://localhost:8000
 - Veriler Yahoo Finance'ten (yfinance) gelir: ücretsizdir, resmi değildir, gecikmeli olabilir ve ara sıra boş dönebilir. Boş dönen hisse o çalışmada atlanır.
 - Seans içi sinyaller günün tamamlanmamış mumuna dayanır, kapanışta kaybolabilir. Kesin olanlar kapanış sonrası mesajdakilerdir.
 - "Geçmiş başarı" istatistikleri işlem maliyeti ve kayma payı içermez. Geçmiş sonuçlar gelecekteki sonuçları garanti etmez.
+
+## Otomatik işlem botu (Alpaca, varsayılan: sanal para)
+- **Giriş:** Seans içindeki her taramada stratejik adaylar için alım bölgesinin üst sınırına limitli alış emri konur. Emre stop ve kâr al emirleri bağlıdır. Fiyat bölgeye indiğinde emri Alpaca anında gerçekleştirir.
+- **Güncelleme:** Aday listesinden çıkan ya da fiyatı alım bölgesinin altına düşen hissenin emri iptal edilir. Bölgesi %1'den fazla değişen hissenin emri yeni seviyeyle yeniden konur. Gün sonunda gerçekleşmemiş alış emirleri iptal edilir.
+- **Çıkış:** Stop ya da kâr al emri tetiklenince pozisyon kapanır. Kapanışta teyit edilen bir SAT sinyali gelirse ya da bilançoya 1 gün kalırsa da satılır. Fiyat ilk hedefe ulaşınca stop giriş fiyatına çekilir.
+- **Risk:** İşlem başına sermayenin %1'i riske girer. Aynı anda en fazla 5 pozisyon açılır ve tek pozisyon sermayenin en fazla %20'si olur. Günlük kayıp %2'yi aşarsa o gün yeni alım yapılmaz.
+- **Açma/kapama:** Actions Variables altındaki `TRADING_ENABLED` değeri `true` ise bot çalışır, `false` ise durur. Gerçek hesaba geçmek için `ALPACA_PAPER` değişkenini `false` yapmak ve gerçek hesabın API anahtarlarını girmek gerekir.
