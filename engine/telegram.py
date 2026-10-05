@@ -9,10 +9,14 @@ STATUS = {}
 
 def send(text: str) -> bool:
     token = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip().strip('"').strip("'")
-    if token.lower().startswith("bot"):
-        token = token[3:]          # yanlışlıkla "bot123:ABC" şeklinde girilmişse
+    raw_len = len(token)
+    m = re.search(r"\d{6,12}:[A-Za-z0-9_-]{30,}", token)   # URL ya da metin içine yapıştırılmışsa token'ı ayıkla
+    if m:
+        token = m.group(0)
     chat = (os.getenv("TELEGRAM_CHAT_ID") or "").strip().strip('"').strip("'")
-    STATUS.update({"tokenSet": bool(token), "tokenFormatOk": bool(re.fullmatch(r"\d{6,12}:[A-Za-z0-9_-]{30,}", token)), "chatIdSet": bool(chat),
+    STATUS.update({"tokenShape": {"length": raw_len, "hasColon": ":" in token,
+                                  "digitsBeforeColon": len(token.split(":")[0]) if ":" in token else None},
+                   "tokenSet": bool(token), "tokenFormatOk": bool(re.fullmatch(r"\d{6,12}:[A-Za-z0-9_-]{30,}", token)), "chatIdSet": bool(chat),
                    "chatIdLooksNumeric": bool(chat) and chat.strip().lstrip("-").isdigit()})
     if not token or not chat:
         STATUS["result"] = "secret eksik"
