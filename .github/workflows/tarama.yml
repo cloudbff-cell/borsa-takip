@@ -63,8 +63,9 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
             python -m engine.run --mode post --force --no-telegram --ping
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            python -m engine.run --mode "${{ inputs.mode || 'auto' }}" --force
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.mode }}" ] && [ "${{ inputs.mode }}" != "auto" ]; then
+            # Elle seçilen mod: saatten bağımsız çalıştır
+            python -m engine.run --mode "${{ inputs.mode }}" --force
           else
             python -m engine.run --mode auto
           fi
