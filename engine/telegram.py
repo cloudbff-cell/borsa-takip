@@ -2,10 +2,16 @@ import os
 
 import requests
 
+# Son gönderimin teşhis bilgisi (gizli bilgi içermez); panelde status.json olarak yayınlanır
+STATUS = {}
+
 
 def send(text: str) -> bool:
     token, chat = os.getenv("TELEGRAM_BOT_TOKEN"), os.getenv("TELEGRAM_CHAT_ID")
+    STATUS.update({"tokenSet": bool(token), "chatIdSet": bool(chat),
+                   "chatIdLooksNumeric": bool(chat) and chat.strip().lstrip("-").isdigit()})
     if not token or not chat:
+        STATUS["result"] = "secret eksik"
         print("---- TELEGRAM (token yok, sadece yazdırılıyor) ----\n" + text)
         return False
     ok = True
@@ -24,7 +30,12 @@ def send(text: str) -> bool:
                                 "disable_web_page_preview": True}, timeout=20)
         if not r.ok:
             print("Telegram hatası:", r.status_code, r.text[:300])
+            try:
+                STATUS["error"] = f"{r.status_code} {r.json().get('description', '')}"
+            except ValueError:
+                STATUS["error"] = str(r.status_code)
             ok = False
+    STATUS["result"] = "gönderildi" if ok else "hata"
     if ok:
         print(f"Telegram: {len(chunks)} mesaj gönderildi.")
     return ok

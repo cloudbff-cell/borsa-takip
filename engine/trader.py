@@ -21,6 +21,8 @@ import requests
 from . import config as C
 from . import data as D
 
+STATUS = {}
+
 PAPER_URL = "https://paper-api.alpaca.markets"
 LIVE_URL = "https://api.alpaca.markets"
 
@@ -84,11 +86,15 @@ def _log(entry):
 
 def run(summary, by, mode, state, client=None):
     """Mesaj listesi ve portföy özeti döner. mode: intraday | post"""
-    if os.getenv("TRADING_ENABLED", "").lower() != "true" and client is None:
+    STATUS["enabled"] = os.getenv("TRADING_ENABLED", "").lower() == "true"
+    STATUS["keysSet"] = bool(os.getenv("ALPACA_KEY_ID")) and bool(os.getenv("ALPACA_SECRET_KEY"))
+    if not STATUS["enabled"] and client is None:
+        STATUS["result"] = "kapalı (TRADING_ENABLED=true değil)"
         return [], None
     api = client or Alpaca()
     msgs = []
     acct = api.account()
+    STATUS.update({"result": "bağlandı", "paper": getattr(api, "paper", True), "accountStatus": acct.get("status")})
     equity, last_eq = float(acct["equity"]), float(acct["last_equity"])
     bp = float(acct.get("buying_power", equity))
     day_pl = (equity - last_eq) / last_eq if last_eq else 0.0

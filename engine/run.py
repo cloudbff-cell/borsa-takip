@@ -282,6 +282,13 @@ def close_message(summary, by):
     return "\n".join(L)
 
 
+def write_status(extra=None):
+    st = {"time": datetime.now(TR).strftime("%Y-%m-%d %H:%M"), "telegram": telegram.STATUS}
+    st.update(extra or {})
+    (SITE / "data").mkdir(parents=True, exist_ok=True)
+    (SITE / "data" / "status.json").write_text(json.dumps(st, ensure_ascii=False))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", default="auto")
@@ -302,6 +309,8 @@ def main():
         telegram.send(f"✅ <b>Borsa takip sistemi güncellendi</b>\n{len(summary['stocks'])} hisse izleniyor · "
                       f"{len(summary['picks'])} stratejik aday: {', '.join(summary['picks'][:10])}"
                       + (f"\n📊 Panel: {PAGES_URL}" if PAGES_URL else ""))
+        trade_step(summary, by, "check", D.load_state())   # yalnız bağlantı kontrolü, emir yok
+        write_status({"mode": "push", "alpaca": trader.STATUS})
     if a.no_telegram:
         return
     state = D.load_state()
@@ -325,6 +334,7 @@ def main():
                 state["sent"][key] = summary["lastBar"]
         trade_step(summary, by, mode, state)
     D.save_state(state)
+    write_status({"mode": mode, "alpaca": trader.STATUS})
 
 
 def trade_step(summary, by, mode, state, client=None):
@@ -333,6 +343,7 @@ def trade_step(summary, by, mode, state, client=None):
         msgs, portfolio = trader.run(summary, by, mode, state, client)
     except Exception as e:  # noqa: BLE001
         print("İşlem modülü hatası:", e)
+        trader.STATUS["result"] = f"hata: {str(e)[:200]}"
         telegram.send(f"⚠️ Otomatik işlem modülü çalışamadı: {e}")
         return
     if msgs:
