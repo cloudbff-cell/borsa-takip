@@ -2,10 +2,11 @@ name: Hisse tarama
 
 on:
   schedule:
-    # Saatler UTC. Hafta içi her saat başı +5 dk çalışır; betik New York saatine
-    # bakarak açılış öncesi / seans içi / kapanış sonrası modunu kendisi seçer.
-    # Yaz/kış saati farkı otomatik karşılanır.
-    - cron: "5 11-22 * * 1-5"
+    # Saatler UTC. Hafta içi 20 dakikada bir tetiklenir; betik New York saatine bakarak
+    # açılış öncesi / seans içi / kapanış sonrası modunu kendisi seçer. GitHub zamanlanmış
+    # tetiklemeleri bazen geciktirir ya da atlar; sık tetikleme bunu telafi eder. Aynı
+    # sinyal/emir tekrar gönderilmez (cache/state.json).
+    - cron: "5,25,45 11-22 * * 1-5"
   # Kod güncellenince paneli hemen yeniden oluştur (bildirim ve emir yok)
   push:
     branches: [main]
