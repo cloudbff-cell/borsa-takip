@@ -23,16 +23,17 @@ permissions:
   pages: write
   id-token: write
 
-concurrency:
-  group: tarama
-  cancel-in-progress: false
-
 jobs:
+  # 1) Tarama + Telegram + Alpaca. Ortam (environment) koruması YOK: panel yayını takılsa bile
+  #    tarama ve emirler engellenmez.
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
-    environment:
-      name: github-pages
+    timeout-minutes: 20
+    concurrency:
+      group: tarama-scan
+      cancel-in-progress: false
+    outputs:
+      site: ${{ steps.chk.outputs.ok }}
     steps:
       - uses: actions/checkout@v4
 
@@ -86,5 +87,16 @@ jobs:
         with:
           path: site
 
-      - if: steps.chk.outputs.ok == '1'
-        uses: actions/deploy-pages@v4
+  # 2) Paneli yayınla. Ayrı iş: bir yayın takılırsa sonraki gelen onu iptal edip yerine geçer.
+  deploy:
+    needs: scan
+    if: needs.scan.outputs.site == '1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: tarama-pages
+      cancel-in-progress: true
+    environment:
+      name: github-pages
+    steps:
+      - uses: actions/deploy-pages@v4

@@ -306,6 +306,8 @@ def main():
         return
     if mode == "off":
         mode = "post"
+    # Elle başlatılan ve gerçek saate uymayan çalışma (ör. seans içinde "post") gün sonu kayıtlarını bozmasın
+    state_tag = "" if detect_mode(now_ny) == mode else "|elle"
     # Elle başlatılan ve gerçek saate uymayan çalışma (ör. seans içinde "post"): gün sonu kayıtlarını bozmasın
     state_tag = "" if detect_mode(now_ny) == mode else "|elle"
     summary, by = build(mode, now_ny)
