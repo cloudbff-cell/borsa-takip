@@ -282,6 +282,45 @@ def close_message(summary, by):
     return "\n".join(L)
 
 
+ACTION_TR = {"buy_limit": "limitli alış emri", "buy": "alış", "sell": "satış", "cancel": "emir iptal",
+             "reprice": "emir seviyesi güncellendi", "stop_to_be": "stop başa baş"}
+
+
+def portfolio_message(p, state):
+    """Gün sonu özetine eklenen portföy bölümü."""
+    if not p:
+        return "\n\n💼 <b>Portföy</b>\nOtomatik işlem kapalı ya da Alpaca'ya bağlanılamadı."
+    if not state.get("startEquity"):
+        state["startEquity"] = p["lastEquity"] or p["equity"]
+    start = state["startEquity"]
+    tot = (p["equity"] / start - 1) * 100 if start else 0
+    L = ["", "", f"💼 <b>Portföy</b> ({'sanal para' if p['paper'] else 'GERÇEK HESAP'})",
+         f"Sermaye <b>${p['equity']:,.2f}</b> · Bugün {p['dayPLusd']:+,.2f}$ ({p['dayPL']:+.2f}%)",
+         f"Nakit ${p['cash']:,.2f} · Alım gücü ${p['buyingPower']:,.2f}",
+         f"Başlangıçtan beri {tot:+.2f}% (başlangıç ${start:,.0f})"]
+    if p["positions"]:
+        L.append(f"\n📈 <b>Açık pozisyonlar ({len(p['positions'])})</b>")
+        for x in sorted(p["positions"], key=lambda x: -x["pl"]):
+            lv = " · ".join(t for t in [f"Stop ${x['stop']:,.2f}" if x.get("stop") else "",
+                                        f"Kâr al ${x['tp']:,.2f}" if x.get("tp") else ""] if t)
+            L.append(f"• <b>{x['sym']}</b> {x['qty']} adet · Giriş ${x['entry']:,.2f} → ${x['price']:,.2f} · "
+                     f"{x['pl']:+,.2f}$ ({x['plpc']:+.2f}%)" + (f"\n   {lv}" if lv else ""))
+    else:
+        L.append("\nAçık pozisyon yok.")
+    if p.get("pendingBuys"):
+        L.append("⏳ Bekleyen alış emirleri: " + ", ".join(f"{o['sym']} @ ${o['limit']:,.2f}" for o in p["pendingBuys"]))
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    log = [l for l in (p.get("log") or []) if str(l.get("ts", "")).startswith(today)]
+    if log:
+        L.append("\n🧾 <b>Bugünkü işlemler</b>")
+        for l in log[-15:]:
+            px = l.get("limit") or l.get("price")
+            L.append(f"• {l['ts'][11:16]} {l['sym']} – {ACTION_TR.get(l['side'], l['side'])}"
+                     + (f" {l.get('qty')} adet" if l.get("qty") else "") + (f" @ ${px:,.2f}" if px else "")
+                     + (f" ({l['reason']})" if l.get("reason") else ""))
+    return "\n".join(L)
+
+
 def write_status(extra=None):
     st = {"time": datetime.now(TR).strftime("%Y-%m-%d %H:%M"), "telegram": telegram.STATUS}
     st.update(extra or {})
@@ -333,12 +372,12 @@ def main():
         if msgs:
             telegram.send(("✅ <b>Kapanışta teyitli sinyaller</b>\n\n" if mode == "post" else "⏱ <b>Seans içi yeni sinyaller</b>\n\n")
                           + "\n\n".join(msgs))
+        portfolio = trade_step(summary, by, mode, state)
         if mode == "post":
             key = f"close|{summary['lastBar']}{state_tag}"
             if key not in state["sent"]:
-                telegram.send(close_message(summary, by))
+                telegram.send(close_message(summary, by) + portfolio_message(portfolio, state))
                 state["sent"][key] = summary["lastBar"]
-        trade_step(summary, by, mode, state)
     D.save_state(state)
     write_status({"mode": mode, "alpaca": trader.STATUS})
 
@@ -351,7 +390,7 @@ def trade_step(summary, by, mode, state, client=None):
         print("İşlem modülü hatası:", e)
         trader.STATUS["result"] = f"hata: {str(e)[:200]}"
         telegram.send(f"⚠️ Otomatik işlem modülü çalışamadı: {e}")
-        return
+        return None
     if msgs:
         telegram.send("🤖 <b>Bot işlemleri</b>\n\n" + "\n\n".join(msgs))
     if portfolio:
@@ -359,6 +398,7 @@ def trade_step(summary, by, mode, state, client=None):
         portfolio["log"] = json.loads(p.read_text())[-30:] if p.exists() else []
         summary["portfolio"] = portfolio
         (SITE / "data" / "summary.json").write_text(json.dumps(summary, default=str, separators=(",", ":")))
+    return portfolio
 
 
 if __name__ == "__main__":

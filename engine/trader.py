@@ -149,10 +149,25 @@ def run(summary, by, mode, state, client=None):
                             print(e)
 
     # 3) Girişler (yalnız seans içinde)
-    portfolio = {"equity": equity, "dayPL": day_pl * 100, "paper": getattr(api, "paper", True),
+    def _lvl(sym, kind):
+        for o in flat:
+            if o["symbol"] == sym and o["side"] == "sell":
+                if kind == "stop" and o.get("type") in ("stop", "stop_limit") and o.get("stop_price"):
+                    return float(o["stop_price"])
+                if kind == "tp" and o.get("type") == "limit" and o.get("limit_price"):
+                    return float(o["limit_price"])
+        return None
+
+    portfolio = {"equity": equity, "lastEquity": last_eq, "dayPL": day_pl * 100, "dayPLusd": equity - last_eq,
+                 "cash": float(acct.get("cash", 0) or 0), "buyingPower": float(acct.get("buying_power", 0) or 0),
+                 "paper": getattr(api, "paper", True),
+                 "pendingBuys": [{"sym": o["symbol"], "qty": o.get("qty"), "limit": float(o.get("limit_price") or 0)}
+                                 for o in orders if o["side"] == "buy"],
                  "positions": [{"sym": k, "qty": v["qty"], "entry": float(v["avg_entry_price"]),
                                 "price": float(v["current_price"]), "pl": float(v["unrealized_pl"]),
-                                "plpc": float(v["unrealized_plpc"]) * 100} for k, v in pos.items()]}
+                                "plpc": float(v["unrealized_plpc"]) * 100,
+                                "value": float(v.get("market_value") or 0),
+                                "stop": _lvl(k, "stop"), "tp": _lvl(k, "tp")} for k, v in pos.items()]}
     if mode == "post":
         msgs += cancel_stale_entries(api, orders, tag)
     if mode != "intraday":
