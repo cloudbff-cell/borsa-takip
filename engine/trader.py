@@ -92,15 +92,17 @@ def decision_snapshot(s):
     why += (fv.get("notes") or [])[:3]
     if sea.get("cur"):
         why.append(f"{sea.get('curName')} mevsimselliği: %{sea['cur']['win']:.0f} pozitif, ort. {sea['cur']['avg']:+.1f}%")
-    return {"score": s.get("score"), "parts": s.get("parts"), "trend": s.get("trend"), "rsi": s.get("rsi"),
+    return {"score": s.get("score"), "base": s.get("base"), "parts": s.get("parts"), "trend": s.get("trend"), "rsi": s.get("rsi"),
             "price": s.get("price"), "ema20": s.get("ema20"), "ema50": s.get("ema50"), "atr": s.get("atr"),
             "signals": recent_buy, "daysToEarnings": fv.get("daysToEarnings"), "why": why}
 
 
 def _parts_text(snap):
     p = snap.get("parts") or {}
-    return (f"Puan <b>{snap.get('score', 0):.0f}</b>/100 (teknik {p.get('teknik', 0)}/40 · göreceli {p.get('goreceli', 0):.0f}/20 · "
-            f"temel {p.get('temel', 0)}/25 · mevsim {p.get('mevsim', 0):.0f}/15)")
+    base = snap.get("base", snap.get("score", 0) - (p.get("mevsim") or 0))
+    return (f"Puan <b>{snap.get('score', 0):.0f}</b> = ana {base:.0f}/100 + mevsim bonusu {p.get('mevsim', 0):.0f}/15\n"
+            f"   (teknik {p.get('teknik', 0)}/40 · göreceli {p.get('goreceli', 0):.0f}/20 · temel {p.get('temel', 0)}/25 · "
+            f"revizyon {p.get('revizyon', 0):.0f}/10 · hacim {p.get('hacim', 0):.0f}/5)")
 
 
 def _log(entry):

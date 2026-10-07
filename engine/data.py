@@ -98,6 +98,23 @@ def _fetch_fundamentals(t: str) -> dict:
         d["earningsHistory"] = hist[:6]
     except Exception:
         d["earningsHistory"] = []
+    # Analist tahmin revizyonları (yıllık HBK tahmininin 30/90 gün önceye göre değişimi; yukarı/aşağı revizyon sayısı)
+    try:
+        et = tk.eps_trend
+        if et is not None and len(et):
+            d["epsTrend"] = {per: {k: _clean(float(et.at[per, k])) for k in ("current", "30daysAgo", "90daysAgo")
+                                   if k in et.columns and et.at[per, k] is not None}
+                             for per in ("0y", "+1y") if per in et.index}
+    except Exception:
+        pass
+    try:
+        er = tk.eps_revisions
+        if er is not None and len(er):
+            d["epsRevisions"] = {per: {k: _clean(float(er.at[per, k])) for k in ("upLast30days", "downLast30days")
+                                       if k in er.columns}
+                                 for per in ("0y", "+1y") if per in er.index}
+    except Exception:
+        pass
     return d
 
 
