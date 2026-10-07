@@ -76,6 +76,33 @@ def _legs(orders):
     return out
 
 
+def decision_snapshot(s):
+    """Emir anındaki puan ve gerekçeler (sonradan analiz için kalıcı kayıt)."""
+    if not s:
+        return {}
+    fv = s.get("fund") or {}
+    sea = s.get("season") or {}
+    recent_buy = [r["name"] for r in s.get("recent", []) if r["side"] == "AL"]
+    why = []
+    if recent_buy:
+        why.append("AL sinyali: " + ", ".join(recent_buy))
+    else:
+        why.append("Sinyal yok, güçlü trend kuralı")
+    why.append(f"Trend {s.get('trend')}, RSI {s.get('rsi')}, SPY'a göre 3A {s.get('rs3m')}%")
+    why += (fv.get("notes") or [])[:3]
+    if sea.get("cur"):
+        why.append(f"{sea.get('curName')} mevsimselliği: %{sea['cur']['win']:.0f} pozitif, ort. {sea['cur']['avg']:+.1f}%")
+    return {"score": s.get("score"), "parts": s.get("parts"), "trend": s.get("trend"), "rsi": s.get("rsi"),
+            "price": s.get("price"), "ema20": s.get("ema20"), "ema50": s.get("ema50"), "atr": s.get("atr"),
+            "signals": recent_buy, "daysToEarnings": fv.get("daysToEarnings"), "why": why}
+
+
+def _parts_text(snap):
+    p = snap.get("parts") or {}
+    return (f"Puan <b>{snap.get('score', 0):.0f}</b>/100 (teknik {p.get('teknik', 0)}/40 · göreceli {p.get('goreceli', 0):.0f}/20 · "
+            f"temel {p.get('temel', 0)}/25 · mevsim {p.get('mevsim', 0):.0f}/15)")
+
+
 def _log(entry):
     p = D.CACHE / "trades.json"
     log = json.loads(p.read_text()) if p.exists() else []
@@ -126,7 +153,8 @@ def run(summary, by, mode, state, client=None):
                 api.close_position(sym)
                 pl = float(p.get("unrealized_pl", 0))
                 msgs.append(f"{tag} 🔴 <b>{sym}</b> SATIŞ emri ({reason}) · {p['qty']} adet · Gerçekleşmemiş K/Z ${pl:,.2f}")
-                _log({"sym": sym, "side": "sell", "qty": p["qty"], "reason": reason})
+                _log({"sym": sym, "side": "sell", "qty": p["qty"], "reason": reason,
+                      "pl": float(p.get("unrealized_pl", 0)), "decision": decision_snapshot(s)})
             except RuntimeError as e:
                 msgs.append(f"⚠️ {sym} kapatılamadı: {e}")
 
@@ -260,6 +288,7 @@ def _manage_entries(api, summary, by, state, pos, orders, equity, bp, tag, today
         qty, risk_ps = _size(equity, bp, limit, stop)
         if qty < 1 or tp <= limit:
             continue
+        snap = decision_snapshot(s)
         try:
             api.bracket_buy(t, qty, limit, stop, tp, f"bt-{today}-{t}-{datetime.now().strftime('%H%M')}")
             state["sent"][key] = today
@@ -268,8 +297,9 @@ def _manage_entries(api, summary, by, state, pos, orders, equity, bp, tag, today
             now = "fiyat bölgede, hemen gerçekleşebilir" if price <= pl["zoneHigh"] * 1.002 else f"şu an ${price:,.2f}, geri çekilme bekleniyor"
             msgs.append(f"{tag} 🟢 <b>{t}</b> LİMİTLİ ALIŞ emri · {qty} adet @ ${limit:,.2f} (≈${qty*limit:,.0f}) – {now}\n"
                         f"   Stop ${stop:,.2f} · risk ≈${qty*risk_ps:,.0f} = sermayenin %{qty*risk_ps/equity*100:.1f} · Kâr al ${tp:,.2f}\n"
-                        f"   Gerekçe: puan {s['score']:.0f}, {s['trend']} trend")
-            _log({"sym": t, "side": "buy_limit", "qty": qty, "limit": limit, "stop": stop, "tp": tp})
+                        f"   {_parts_text(snap)}\n"
+                        + "\n".join(f"   • {w}" for w in snap["why"]))
+            _log({"sym": t, "side": "buy_limit", "qty": qty, "limit": limit, "stop": stop, "tp": tp, "decision": snap})
         except RuntimeError as e:
             msgs.append(f"⚠️ {t} alış emri verilemedi: {e}")
     return msgs
