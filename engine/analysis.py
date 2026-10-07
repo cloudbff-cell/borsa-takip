@@ -98,3 +98,43 @@ def seasonality(df: pd.DataFrame, bench: pd.DataFrame | None, today: date | None
     cur, nxt = today.month - 1, today.month % 12
     return {"table": table, "cur": table[cur], "next": table[nxt], "curName": AY[cur], "nextName": AY[nxt],
             "score": round(score(table[cur]), 1), "nextScore": round(score(table[nxt]), 1)}
+
+
+def revision_view(f: dict) -> dict:
+    """0-10: analistlerin yıllık HBK tahminlerini yukarı mı aşağı mı çektiği.
+    6 puan: tahminin 90 günde değişimi (-5%..+5% arası doğrusal), 4 puan: son 30 günde yukarı/aşağı revizyon dengesi."""
+    trend, rev, notes = f.get("epsTrend") or {}, f.get("epsRevisions") or {}, []
+    chg = []
+    for per, v in trend.items():
+        cur, old = v.get("current"), v.get("90daysAgo")
+        if cur is not None and old not in (None, 0):
+            chg.append((cur - old) / abs(old))
+    up = sum((v.get("upLast30days") or 0) for v in rev.values())
+    dn = sum((v.get("downLast30days") or 0) for v in rev.values())
+    if not chg and up + dn == 0:
+        return {"score": 5.0, "notes": ["Analist tahmin revizyonu verisi yok (nötr 5 puan)"]}
+    sc = 0.0
+    if chg:
+        c = float(np.mean(chg))
+        sc += float(np.clip((c + 0.05) / 0.10, 0, 1) * 6)
+        notes.append(f"Yıllık HBK tahmini 90 günde {c*100:+.1f}%")
+    else:
+        sc += 3
+    if up + dn:
+        sc += (up - dn) / (up + dn) * 2 + 2
+        notes.append(f"Son 30 günde {int(up)} yukarı, {int(dn)} aşağı tahmin revizyonu")
+    else:
+        sc += 2
+    return {"score": round(sc, 1), "notes": notes}
+
+
+def volume_view(df: pd.DataFrame, n: int = 50) -> dict:
+    """0-5: son n günde yükseliş günlerinin hacmi / düşüş günlerinin hacmi (birikim mi dağıtım mı)."""
+    d = df.tail(n + 1)
+    ch = d["Close"].diff().iloc[1:]
+    v = d["Volume"].iloc[1:]
+    upv, dnv = float(v[ch > 0].sum()), float(v[ch < 0].sum())
+    if dnv <= 0:
+        return {"score": 5.0, "ratio": None}
+    ratio = upv / dnv
+    return {"score": round(float(np.clip((ratio - 0.8) / 0.7, 0, 1) * 5), 1), "ratio": round(ratio, 2)}

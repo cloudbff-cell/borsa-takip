@@ -18,7 +18,7 @@ from . import config as C
 from . import data as D
 from . import telegram
 from . import trader
-from .analysis import fundamental_view, seasonality
+from .analysis import fundamental_view, revision_view, seasonality, volume_view
 from .indicators import add_indicators
 from .signals import SIGNALS, aggregate_stats, compute_signals, signal_events, technical_score, trade_levels
 
@@ -134,7 +134,12 @@ def build(mode: str, now_ny: datetime, prices=None, fund=None, monthly=None, ext
         ts = technical_score(row, ret63 - bench_ret)
         mdf = monthly.get(t)
         sea = seasonality(mdf, monthly.get(C.BENCHMARK), now_ny.date()) if mdf is not None and len(mdf) > 24 else None
-        total = ts["tech"] + ts["rs"] + fv["score"] + (sea["score"] if sea else 0)
+        rv = revision_view(f)
+        vv = volume_view(df)
+        fv["notes"] = fv["notes"] + rv["notes"] + ([f"Yükseliş/düşüş günleri hacim oranı (50g) {vv['ratio']}"] if vv.get("ratio") else [])
+        base = ts["tech"] + ts["rs"] + fv["score"] + rv["score"] + vv["score"]      # ana puan, en fazla 100
+        bonus = sea["score"] if sea else 0                                          # mevsimsellik bonusu, en fazla 15
+        total = base + bonus
 
         today_sigs = [code for code in SIGNALS if bool(last[code])]
         recent = [e for e in evs if e["date"] >= df.index[-3]]
@@ -156,8 +161,9 @@ def build(mode: str, now_ny: datetime, prices=None, fund=None, monthly=None, ext
             "ema20": r2(row["ema20"]), "ema50": r2(row["ema50"]), "ema200": r2(row["ema200"]),
             "hh20": r2(row["hh"]), "ll20": r2(row["ll"]), "res60": r2(row["res60"]), "sup60": r2(row["sup60"]),
             "volr": r2(last["volr"]), "rs3m": r2((ret63 - bench_ret) * 100),
-            "score": round(float(total), 1), "parts": {"teknik": ts["tech"], "goreceli": ts["rs"],
-                                                        "temel": fv["score"], "mevsim": sea["score"] if sea else 0},
+            "score": round(float(total), 1), "base": round(float(base), 1),
+            "parts": {"teknik": ts["tech"], "goreceli": ts["rs"], "temel": fv["score"],
+                      "revizyon": rv["score"], "hacim": vv["score"], "mevsim": bonus},
             "signals": active,
             "recent": [{"d": e["date"].strftime("%Y-%m-%d"), "code": e["code"], "side": SIGNALS[e["code"]][0],
                         "name": SIGNALS[e["code"]][1]} for e in recent],
