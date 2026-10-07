@@ -187,8 +187,9 @@ def build(mode: str, now_ny: datetime, prices=None, fund=None, monthly=None):
             return "trend"
         return None
 
+    # Sıralama: önce sinyalli adaylar (testte işlem başına daha iyi), kendi içinde puana göre; sonra trend adayları
     picks = []
-    for s in sorted([s for s in stocks if strategic(s)], key=lambda s: -s["score"]):
+    for s in sorted([s for s in stocks if strategic(s)], key=lambda s: (strategic(s) != "sinyal", -s["score"])):
         plan = strategic_plan(s, strategic(s))
         if plan["rr"] >= 1.5 and len(picks) < 10:   # risk/ödül zayıfsa aday sayma
             s["plan"] = {k: v if isinstance(v, (bool, str)) else r2(v) for k, v in plan.items()}
