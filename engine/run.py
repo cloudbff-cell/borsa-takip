@@ -63,19 +63,26 @@ def pick_universe(fund: dict, available: set):
     return top, leaders, tracked
 
 
-def strategic_plan(s):
-    """Alım bölgesi: fiyat 20 EMA'dan 1 ATR'den fazla uzaksa geri çekilme beklenir."""
+def strategic_plan(s, kind="sinyal"):
+    """Alım bölgesi.
+    sinyal: fiyat 20 EMA'dan 1 ATR'den fazla uzaksa geri çekilme beklenir, değilse mevcut fiyat civarı.
+    trend : sinyal olmadan giriş; her durumda 20 EMA'ya geri çekilme beklenir (EMA20 .. EMA20+0.5 ATR)."""
     p, a, e20 = s["price"], s["atr"], s["ema20"]
-    stretched = p - e20 > a
+    stretched = p - e20 > a if kind == "sinyal" else p > e20 + 0.5 * a
     if stretched:
         lo, hi = e20, min(p, e20 + 0.5 * a)
+    elif kind == "trend" and p < e20:
+        lo, hi = p - 0.5 * a, p
+    elif kind == "trend":
+        lo, hi = e20, p
     else:
         lo, hi = (max(e20, p - 0.5 * a) if e20 < p else p - 0.5 * a), p
     mid = (lo + hi) / 2
     stop = min(lo - 1.5 * a, s["ema50"] - 0.25 * a) if s["ema50"] < lo else lo - 1.5 * a
     t1, t2 = mid + C.T1_ATR * a, mid + C.T2_ATR * a
     return {"zoneLow": lo, "zoneHigh": hi, "stop": stop, "t1": t1, "t2": t2,
-            "risk_pct": (mid - stop) / mid * 100, "rr": (t2 - mid) / (mid - stop), "wait": stretched}
+            "risk_pct": (mid - stop) / mid * 100, "rr": (t2 - mid) / (mid - stop), "wait": stretched,
+            "entryType": kind}
 
 
 def chart_payload(df, sig, events, n=300):
@@ -168,18 +175,23 @@ def build(mode: str, now_ny: datetime, prices=None, fund=None, monthly=None):
 
     # Stratejik adaylar: son 3 günde AL sinyali ya da güçlü yükseliş trendi + yüksek puan; bilanço riski hariç
     def strategic(s):
+        """Giriş türü ('sinyal' / 'trend') ya da None."""
         recent_buy = any(r["side"] == "AL" for r in s["recent"])
         recent_sell = any(r["side"] == "SAT" for r in s["recent"])
-        strong = s["trend"] == "Yükseliş" and s["score"] >= 65
         er = s["fund"]["daysToEarnings"]
-        return ((recent_buy or strong) and not recent_sell and (s["rsi"] or 0) < 75
-                and not (er is not None and 0 <= er <= C.EARNINGS_GUARD_DAYS))
+        if recent_sell or (s["rsi"] or 0) >= 75 or (er is not None and 0 <= er <= C.EARNINGS_GUARD_DAYS):
+            return None
+        if recent_buy and s["score"] >= C.ENTRY_SIGNAL_MIN_SCORE:
+            return "sinyal"
+        if s["trend"] == "Yükseliş" and s["score"] >= C.ENTRY_TREND_MIN_SCORE:
+            return "trend"
+        return None
 
     picks = []
     for s in sorted([s for s in stocks if strategic(s)], key=lambda s: -s["score"]):
-        plan = strategic_plan(s)
+        plan = strategic_plan(s, strategic(s))
         if plan["rr"] >= 1.5 and len(picks) < 10:   # risk/ödül zayıfsa aday sayma
-            s["plan"] = {k: r2(v) if not isinstance(v, bool) else v for k, v in plan.items()}
+            s["plan"] = {k: v if isinstance(v, (bool, str)) else r2(v) for k, v in plan.items()}
             picks.append(s)
     warnings = [s for s in stocks if any(r["side"] == "SAT" for r in s["recent"])]
     seasonal = sorted([s for s in stocks if s["season"] and s["season"]["cur"]], key=lambda s: -s["season"]["score"])[:10]
@@ -256,7 +268,8 @@ def plan_message(summary, by):
     for t in summary["picks"]:
         s = by[t]
         p = s["plan"]
-        L.append(f"• <b>{t}</b> ${s['price']} · Puan {s['score']:.0f} · {s['trend']} · RSI {s['rsi']}\n"
+        L.append(f"• <b>{t}</b> ${s['price']} · Puan {s['score']:.0f} · "
+                 f"{'AL sinyali' if p.get('entryType') == 'sinyal' else 'yüksek puan + geri çekilme'} · RSI {s['rsi']}\n"
                  f"   Alım bölgesi ${p['zoneLow']}–${p['zoneHigh']}" + (" (geri çekilme bekle)" if p["wait"] else "")
                  + f" · Stop ${p['stop']} (-{p['risk_pct']:.1f}%) · H1 ${p['t1']} · H2 ${p['t2']} · R/Ö {p['rr']:.1f}")
     if summary["warnings"]:

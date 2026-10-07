@@ -50,6 +50,7 @@ def main():
     rng = np.random.default_rng(1)
     fund = {t: {"shortName": t, "sector": TO.SECTORS[i % len(TO.SECTORS)], "marketCap": float(rng.lognormal(26, 1)),
                 "earningsHistory": []} for i, t in enumerate(C.CANDIDATES)}
+    C.ENTRY_SIGNAL_MIN_SCORE, C.ENTRY_TREND_MIN_SCORE = 30, 50   # sentetik veride yeterli aday olsun
     now = datetime.now(run.NY).replace(hour=11)
     summary, by = run.build("intraday", now, prices=prices, fund=fund, monthly=monthly)
     # İlk adayı alım bölgesine sok

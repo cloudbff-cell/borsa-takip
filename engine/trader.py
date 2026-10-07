@@ -84,17 +84,18 @@ def decision_snapshot(s):
     sea = s.get("season") or {}
     recent_buy = [r["name"] for r in s.get("recent", []) if r["side"] == "AL"]
     why = []
-    if recent_buy:
-        why.append("AL sinyali: " + ", ".join(recent_buy))
+    kind = (s.get("plan") or {}).get("entryType")
+    if kind == "sinyal" or (kind is None and recent_buy):
+        why.append(f"Giriş türü: AL sinyali ({', '.join(recent_buy)}) + puan ≥ {C.ENTRY_SIGNAL_MIN_SCORE}")
     else:
-        why.append("Sinyal yok, güçlü trend kuralı")
+        why.append(f"Giriş türü: sinyal yok, yüksek puan (≥ {C.ENTRY_TREND_MIN_SCORE}) + 20 EMA'ya geri çekilme")
     why.append(f"Trend {s.get('trend')}, RSI {s.get('rsi')}, SPY'a göre 3A {s.get('rs3m')}%")
     why += (fv.get("notes") or [])[:3]
     if sea.get("cur"):
         why.append(f"{sea.get('curName')} mevsimselliği: %{sea['cur']['win']:.0f} pozitif, ort. {sea['cur']['avg']:+.1f}%")
     return {"score": s.get("score"), "parts": s.get("parts"), "trend": s.get("trend"), "rsi": s.get("rsi"),
             "price": s.get("price"), "ema20": s.get("ema20"), "ema50": s.get("ema50"), "atr": s.get("atr"),
-            "signals": recent_buy, "daysToEarnings": fv.get("daysToEarnings"), "why": why}
+            "signals": recent_buy, "entryType": kind, "daysToEarnings": fv.get("daysToEarnings"), "why": why}
 
 
 def _parts_text(snap):
