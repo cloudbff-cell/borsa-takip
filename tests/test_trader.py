@@ -37,6 +37,9 @@ class FakeAlpaca:
     def close_position(self, sym):
         self.calls.append(("close", sym))
 
+    def stop_sell(self, sym, qty, stop, cid):
+        self.calls.append(("stop_sell", sym, qty, stop))
+
 
 def main():
     import numpy as np
@@ -97,6 +100,7 @@ def main():
     f5 = FakeAlpaca(positions=pos)
     m5, _ = trader.run(summary, by, "post", {"sent": {}}, f5)
     assert ("close", s_sell["t"]) in f5.calls and ("cancel", "o2") in f5.calls, f5.calls
+    assert not [c for c in f5.calls if c[0] == "stop_sell"], f5.calls
     print("ÇIKIŞ:", m5[0])
 
     # Hedef 1 görülünce stop başa baş
@@ -119,12 +123,41 @@ def main():
     trader.run(summary, by, "intraday", {"sent": {}}, f11)
     assert not [c for c in f11.calls if c[0] == "stop"], f11.calls
 
-    # Stop emri yoksa uyarı
+    # Stop emri yoksa: koruyucu stop yeniden kurulur (fiyat seviyenin üstünde)
     class NoStop(FakeAlpaca):
         def open_orders(self):
             return []
-    m12, _ = trader.run(summary, by, "intraday", {"sent": {}}, NoStop(positions=pos))
-    assert any("stop emri bulunamadı" in m for m in m12)
+    f12 = NoStop(positions=pos)
+    m12, _ = trader.run(summary, by, "intraday", {"sent": {}}, f12)
+    ss = [c for c in f12.calls if c[0] == "stop_sell"]
+    lvl = round(max(entry - 2 * s["atr"], max(s["price"], s["high"]) - C.TRAIL_ATR * s["atr"]), 2)
+    assert ss and ss[0][1] == s["t"] and ss[0][2] == 3 and abs(ss[0][3] - lvl) < 0.02, (f12.calls, lvl)
+    assert any("koruyucu stop yeniden kuruldu" in m for m in m12)
+    print("KORUMA:", [m for m in m12 if "koruyucu" in m][0])
+
+    # Stop yok ve fiyat seviyenin altında: pozisyon kapatılır
+    low = [dict(pos[0], current_price=str(entry - 3 * s["atr"]))]
+    by_low = dict(by); by_low[s["t"]] = dict(s, price=entry - 3 * s["atr"], high=entry - 2.9 * s["atr"])
+    f13 = NoStop(positions=low)
+    m13, _ = trader.run(summary, by_low, "intraday", {"sent": {}}, f13)
+    assert ("close", s["t"]) in f13.calls and not [c for c in f13.calls if c[0] == "stop_sell"], f13.calls
+
+    # Stop adedi pozisyonla uyuşmuyor: eski emir iptal, tam adetle yeniden
+    class WrongQty(FakeAlpaca):
+        def open_orders(self):
+            return [{"id": "w1", "symbol": s["t"], "side": "sell", "type": "stop", "qty": "1", "stop_price": str(entry)}]
+    f14 = WrongQty(positions=pos)
+    trader.run(summary, by, "intraday", {"sent": {}}, f14)
+    ss = [c for c in f14.calls if c[0] == "stop_sell"]
+    assert ("cancel", "w1") in f14.calls and ss and ss[0][2] == 3 and ss[0][3] >= entry, f14.calls
+
+    # Kapanış (market) emri yoldaysa dokunma
+    class Closing(FakeAlpaca):
+        def open_orders(self):
+            return [{"id": "m1", "symbol": s["t"], "side": "sell", "type": "market", "qty": "3"}]
+    f15 = Closing(positions=pos)
+    trader.run(summary, by, "intraday", {"sent": {}}, f15)
+    assert not [c for c in f15.calls if c[0] in ("stop_sell", "cancel", "close")], f15.calls
 
     # Kâr al yoksa 'oto' emri, varsa 'bracket'
     a = trader.Alpaca.__new__(trader.Alpaca)

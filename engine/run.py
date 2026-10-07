@@ -307,7 +307,8 @@ def close_message(summary, by):
 
 
 ACTION_TR = {"buy_limit": "limitli alış emri", "buy": "alış", "sell": "satış", "cancel": "emir iptal",
-             "reprice": "emir seviyesi güncellendi", "stop_to_be": "stop başa baş"}
+             "reprice": "emir seviyesi güncellendi", "stop_to_be": "stop başa baş",
+             "trail": "iz süren stop yükseltildi", "stop_restore": "koruyucu stop yeniden kuruldu"}
 
 
 def portfolio_message(p, state):

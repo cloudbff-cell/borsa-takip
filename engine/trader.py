@@ -61,6 +61,12 @@ class Alpaca:
             body["order_class"] = "oto"
         return self._r("POST", "/v2/orders", json=body)
 
+    def stop_sell(self, sym, qty, stop, client_id):
+        """Bağımsız koruyucu stop satış emri (GTC)."""
+        return self._r("POST", "/v2/orders", json={
+            "symbol": sym, "qty": str(qty), "side": "sell", "type": "stop", "stop_price": f"{stop:.2f}",
+            "time_in_force": "gtc", "client_order_id": client_id})
+
     def replace_stop(self, order_id, stop):
         return self._r("PATCH", f"/v2/orders/{order_id}", json={"stop_price": f"{stop:.2f}"})
 
@@ -139,6 +145,7 @@ def run(summary, by, mode, state, client=None):
     today = summary["lastBar"]
 
     # 1) Çıkışlar: kapanışta teyitli SAT sinyali veya bilanço öncesi (post modunda; emir ertesi açılışta gerçekleşir)
+    closed = set()
     if mode == "post":
         for sym, p in pos.items():
             s = by.get(sym)
@@ -158,6 +165,7 @@ def run(summary, by, mode, state, client=None):
                         print(e)
             try:
                 api.close_position(sym)
+                closed.add(sym)
                 pl = float(p.get("unrealized_pl", 0))
                 msgs.append(f"{tag} 🔴 <b>{sym}</b> SATIŞ emri ({reason}) · {p['qty']} adet · Gerçekleşmemiş K/Z ${pl:,.2f}")
                 _log({"sym": sym, "side": "sell", "qty": p["qty"], "reason": reason,
@@ -167,7 +175,7 @@ def run(summary, by, mode, state, client=None):
 
     # 2) İz süren stop: girişten beri en yüksek fiyat - TRAIL_ATR x ATR; stop yalnız yukarı taşınır
     if C.TRAIL_ATR and mode in ("intraday", "post"):
-        msgs += _trail_stops(api, pos, flat, by, state, tag)
+        msgs += _trail_stops(api, {k: v for k, v in pos.items() if k not in closed}, flat, by, state, tag)
     state["held"] = sorted(pos)
     state["trail"] = {k: v for k, v in state.get("trail", {}).items() if k in pos}
 
@@ -206,20 +214,65 @@ def run(summary, by, mode, state, client=None):
     return msgs + _manage_entries(api, summary, by, state, pos, orders, equity, bp, tag, today), portfolio
 
 
+def _num(q):
+    q = abs(float(q))
+    return int(q) if q.is_integer() else q
+
+
+def _protect(api, sym, p, s, sells, stops, t, tag):
+    """Stop emri yoksa ya da adedi pozisyonla uyuşmuyorsa koruyucu stopu yeniden kur.
+    Fiyat zaten stop seviyesinin altındaysa pozisyonu kapat. Mesaj (ya da None) döner."""
+    entry, price, qty = float(p["avg_entry_price"]), float(p["current_price"]), _num(p["qty"])
+    if any(o.get("type") == "market" for o in sells):
+        return None                                   # kapanış emri zaten yolda; çift satış yapma
+    atr = (s or {}).get("atr")
+    if atr:
+        level = max(entry - 2 * atr, t["hi"] - C.TRAIL_ATR * atr)
+    else:
+        level = entry * 0.92                          # veri yoksa: girişin %8 altı
+    old_stop = max([float(o["stop_price"]) for o in stops if o.get("stop_price")] or [0])
+    level = round(max(level, old_stop), 2)            # mevcut stop daha yüksekse onu koru (asla aşağı çekme)
+    for o in sells:                                   # Alpaca adedi bağlı tutmasın: eski satış emirlerini kaldır
+        try:
+            api.cancel(o["id"])
+        except RuntimeError as e:
+            print(e)
+    try:
+        if price <= level:
+            api.close_position(sym)
+            _log({"sym": sym, "side": "sell", "qty": qty, "reason": "stop emri yoktu, fiyat stop seviyesinin altında"})
+            return (f"{tag} 🛡 <b>{sym}</b> stop emri bulunamadı ve fiyat (${price:,.2f}) stop seviyesinin "
+                    f"(${level:,.2f}) altında – pozisyon kapatıldı")
+        api.stop_sell(sym, qty, level, f"bt-stop-{sym}-{datetime.now().strftime('%m%d%H%M')}")
+        _log({"sym": sym, "side": "stop_restore", "qty": qty, "stop": level})
+        return f"{tag} 🛡 <b>{sym}</b> koruyucu stop yeniden kuruldu: {qty} adet @ ${level:,.2f}"
+    except RuntimeError as e:
+        return f"⚠️ <b>{sym}</b> koruyucu stop kurulamadı: {e} – Alpaca'dan kontrol et"
+
+
 def _trail_stops(api, pos, flat, by, state, tag):
     msgs = []
     trail = state.setdefault("trail", {})
     for sym, p in pos.items():
         s = by.get(sym)
         entry, price = float(p["avg_entry_price"]), float(p["current_price"])
-        leg = next((o for o in flat if o["symbol"] == sym and o["side"] == "sell"
-                    and o.get("type") in ("stop", "stop_limit") and o.get("stop_price")), None)
-        if not s or not s.get("atr") or not leg:
-            if not leg:
-                msgs.append(f"⚠️ <b>{sym}</b> için açık stop emri bulunamadı – pozisyon korumasız olabilir, Alpaca'dan kontrol et")
+        sells = [o for o in flat if o["symbol"] == sym and o["side"] == "sell"]
+        stops = [o for o in sells if o.get("type") in ("stop", "stop_limit") and o.get("stop_price")]
+        t = trail.setdefault(sym, {"hi": max(entry, price),
+                                   "msg": float(stops[0]["stop_price"]) if stops else 0.0})
+        t["hi"] = max(t["hi"], price, (s or {}).get("high") or price)
+        qty = _num(p["qty"])
+        qty_ok = all(o.get("qty") is None or _num(o["qty"]) == qty for o in stops)
+        if not stops or not qty_ok:
+            if any(o["symbol"] == sym and o["side"] == "buy" for o in flat):
+                continue          # giriş emri hâlâ kısmen açık: bacaklar bekleme durumunda olabilir, bu tur dokunma
+            m = _protect(api, sym, p, s, sells, stops, t, tag)
+            if m:
+                msgs.append(m)
             continue
-        t = trail.setdefault(sym, {"hi": max(entry, price), "msg": float(leg["stop_price"])})
-        t["hi"] = max(t["hi"], price, s.get("high") or price)
+        leg = stops[0]
+        if not s or not s.get("atr"):
+            continue
         cur = float(leg["stop_price"])
         new = round(t["hi"] - C.TRAIL_ATR * s["atr"], 2)
         if new > cur * 1.002 and new < price:
