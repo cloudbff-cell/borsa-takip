@@ -117,7 +117,10 @@ def main():
         allt = [t for d in data for t in simulate(*d, m)]
         res[name] = summarize(allt)
         res[name]["sadece_sinyal_girisleri"] = summarize([t for t in allt if t["kind"] == "sinyal"])
-    print("::notice title=StopTest::" + json.dumps(res, ensure_ascii=False))
+    for name, v in res.items():   # annotation başına ~4KB sınırı: her yöntem ayrı satır
+        sv = v.pop("sadece_sinyal_girisleri", {})
+        v["sinyal"] = {k: sv.get(k) for k in ("islem", "kazanan%", "ort_getiri%", "ort_R")}
+        print(f"::notice title=ST {name}::" + json.dumps(v, ensure_ascii=False))
     print(json.dumps(res, ensure_ascii=False, indent=1))
 
 
