@@ -279,7 +279,9 @@ def plan_message(summary, by):
         L.append(f"• <b>{t}</b> ${s['price']} · Puan {s['score']:.0f} · "
                  f"{'AL sinyali' if p.get('entryType') == 'sinyal' else 'yüksek puan + geri çekilme'} · RSI {s['rsi']}\n"
                  f"   Alım bölgesi ${p['zoneLow']}–${p['zoneHigh']}" + (" (geri çekilme bekle)" if p["wait"] else "")
-                 + f" · Stop ${p['stop']} (-{p['risk_pct']:.1f}%) · H1 ${p['t1']} · H2 ${p['t2']} · R/Ö {p['rr']:.1f}")
+                 + f" · Stop ${p['stop']} (-{p['risk_pct']:.1f}%) · "
+                 + (f"H1 ${p['t1']} · H2 ${p['t2']}" if C.TAKE_PROFIT else f"Çıkış: iz süren stop {C.TRAIL_ATR} ATR (ref. hedef ${p['t2']})")
+                 + f" · R/Ö {p['rr']:.1f}")
     if summary["warnings"]:
         L += ["", "⚠️ <b>Satış/çıkış uyarısı olanlar (son 3 gün)</b>", ", ".join(summary["warnings"])]
     L += ["", f"🍂 <b>Mevsimsel güçlüler – {by[summary['seasonal'][0]]['season']['curName'] if summary['seasonal'] else ''}</b>"]
