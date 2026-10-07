@@ -50,6 +50,7 @@ def main():
     rng = np.random.default_rng(1)
     fund = {t: {"shortName": t, "sector": TO.SECTORS[i % len(TO.SECTORS)], "marketCap": float(rng.lognormal(26, 1)),
                 "earningsHistory": []} for i, t in enumerate(C.CANDIDATES)}
+    C.ENTRY_SIGNAL_MIN_SCORE, C.ENTRY_TREND_MIN_SCORE = 30, 50   # sentetik veride yeterli aday olsun
     now = datetime.now(run.NY).replace(hour=11)
     summary, by = run.build("intraday", now, prices=prices, fund=fund, monthly=monthly)
     # İlk adayı alım bölgesine sok
@@ -105,7 +106,34 @@ def main():
             "unrealized_pl": "1", "unrealized_plpc": "0.1"}]
     f6 = FakeAlpaca(positions=pos)
     trader.run(summary, by, "intraday", {"sent": {}}, f6)
-    assert ("stop", "o2", entry) in f6.calls, f6.calls
+    st6 = [c for c in f6.calls if c[0] == "stop" and c[1] == "o2"]
+    exp = round(max(s["price"], s["high"]) - C.TRAIL_ATR * s["atr"], 2)
+    assert st6 and abs(st6[0][2] - exp) < 0.02, (f6.calls, exp)
+    print("İZ SÜREN STOP:", st6[0][2])
+
+    # Stop yalnız yukarı: mevcut stop zaten daha yüksekse dokunma
+    class HighStop(FakeAlpaca):
+        def open_orders(self):
+            return [{"id": "o9", "symbol": s["t"], "side": "sell", "type": "stop", "stop_price": str(s["price"] * 0.99)}]
+    f11 = HighStop(positions=pos)
+    trader.run(summary, by, "intraday", {"sent": {}}, f11)
+    assert not [c for c in f11.calls if c[0] == "stop"], f11.calls
+
+    # Stop emri yoksa uyarı
+    class NoStop(FakeAlpaca):
+        def open_orders(self):
+            return []
+    m12, _ = trader.run(summary, by, "intraday", {"sent": {}}, NoStop(positions=pos))
+    assert any("stop emri bulunamadı" in m for m in m12)
+
+    # Kâr al yoksa 'oto' emri, varsa 'bracket'
+    a = trader.Alpaca.__new__(trader.Alpaca)
+    bodies = []
+    a._r = lambda m, path, **kw: bodies.append(kw["json"])
+    a.bracket_buy("X", 1, 10.0, 9.0, None, "c1")
+    a.bracket_buy("X", 1, 10.0, 9.0, 12.0, "c2")
+    assert bodies[0]["order_class"] == "oto" and "take_profit" not in bodies[0]
+    assert bodies[1]["order_class"] == "bracket" and bodies[1]["take_profit"]["limit_price"] == "12.00"
     # Fiyat bölgenin üstündeyken de limitli emir bölge üst sınırına konmalı
     t1 = summary["picks"][1]
     by[t1]["price"] = by[t1]["plan"]["zoneHigh"] * 1.03

@@ -134,7 +134,7 @@ function render(){
     <div class="num">$${fmt(s.price)} ${pct(s.chg)} · Puan <b>${Math.round(s.score)}</b></div>
     <div class="kv num"><span>Alım bölgesi</span><span>$${fmt(p.zoneLow)} – $${fmt(p.zoneHigh)}${p.wait?' · geri çekilme bekle':''}</span>
     <span>Stop</span><span>$${fmt(p.stop)} (−${fmt(p.risk_pct,1)}%)</span>
-    <span>Hedefler</span><span>$${fmt(p.t1)} / $${fmt(p.t2)} · R/Ö ${fmt(p.rr,1)}</span>
+    <span>Referans hedefler</span><span>$${fmt(p.t1)} / $${fmt(p.t2)} · R/Ö ${fmt(p.rr,1)}</span>
     <span>Trend · RSI</span><span>${s.trend} · ${fmt(s.rsi,0)}</span></div>
     <div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">${s.recent.filter(r=>r.side=="AL").map(r=>`<span class="badge al">${r.name}</span>`).join("")}</div></div>`}).join(""):'<p class="empty">Şu an kriterleri karşılayan aday yok.</p>';
   // Bugün
@@ -198,8 +198,8 @@ async function openDetail(t){
         <span>EMA 20 / 50 / 200</span><span>$${fmt(s.ema20)} / $${fmt(s.ema50)} / $${fmt(s.ema200)}</span>
         <span>20g kırılım / destek</span><span>$${fmt(s.hh20)} / $${fmt(s.ll20)}</span><span>60g direnç / destek</span><span>$${fmt(s.res60)} / $${fmt(s.sup60)}</span>
         <span>ATR (oynaklık)</span><span>$${fmt(s.atr)}</span><span>Hacim / 20g ort.</span><span>${fmt(s.volr,2)}x</span>
-        <span>Puan</span><span><b>${Math.round(s.score)}</b>/100 (teknik ${s.parts.teknik}/40 · göreceli ${fmt(s.parts.goreceli,0)}/20 · temel ${s.parts.temel}/25 · mevsim ${fmt(s.parts.mevsim,0)}/15)</span></div>
-        ${p?`<h3>Stratejik plan</h3><div class="kv num"><span>Alım bölgesi</span><span>$${fmt(p.zoneLow)} – $${fmt(p.zoneHigh)}${p.wait?' (geri çekilme bekle)':''}</span><span>Stop</span><span>$${fmt(p.stop)} (−${fmt(p.risk_pct,1)}%)</span><span>Hedef 1 / 2</span><span>$${fmt(p.t1)} / $${fmt(p.t2)}</span><span>Risk/Ödül</span><span>${fmt(p.rr,1)}</span></div>`:''}
+        <span>Puan</span><span><b>${Math.round(s.score)}</b> = ana ${fmt(s.base??s.score,0)}/100 + mevsim bonusu ${fmt(s.parts.mevsim,0)}/15<br>(teknik ${s.parts.teknik}/40 · göreceli ${fmt(s.parts.goreceli,0)}/20 · temel ${s.parts.temel}/25 · revizyon ${fmt(s.parts.revizyon??0,0)}/10 · hacim ${fmt(s.parts.hacim??0,0)}/5)</span></div>
+        ${p?`<h3>Stratejik plan</h3><div class="kv num"><span>Alım bölgesi</span><span>$${fmt(p.zoneLow)} – $${fmt(p.zoneHigh)}${p.wait?' (geri çekilme bekle)':''}</span><span>Stop</span><span>$${fmt(p.stop)} (−${fmt(p.risk_pct,1)}%)</span><span>Referans hedef 1 / 2</span><span>$${fmt(p.t1)} / $${fmt(p.t2)}</span><span>Risk/Ödül</span><span>${fmt(p.rr,1)}</span></div>`:''}
         ${s.signals.map(g=>`<p><span class="badge ${g.side=='AL'?'al':'sat'}">${g.side} · ${g.name}</span> <span class="small">${g.why}</span></p>`).join("")}
       </div>
       <div><h3>Bilanço ve beklentiler</h3>

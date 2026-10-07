@@ -51,6 +51,10 @@ BREAKOUT_LEN = 20
 VOLUME_MULT = 1.5
 ATR_LEN = 14
 STOP_ATR, T1_ATR, T2_ATR = 2.0, 2.0, 4.0
+# Giriş kuralları (puan 100 üzerinden)
+ENTRY_SIGNAL_MIN_SCORE = 65    # son 3 günde AL sinyali varsa gereken en düşük puan
+ENTRY_TREND_MIN_SCORE = 75     # sinyal yoksa: yükseliş trendi + bu puan + 20 EMA'ya geri çekilmede alım
+# (65/75, 10 yıllık testte 60/70, 70/80 ve 75/85'e göre en iyi işlem başı sonucu ve en az kriz kaybını verdi)
 EARNINGS_GUARD_DAYS = 3        # bilançoya bu kadar gün kala yeni alım sinyali "riskli" işaretlenir
 FORWARD_DAYS = 20              # geçmiş sinyal başarısı ölçülürken bakılan gün sayısı
 
@@ -81,7 +85,8 @@ RISK_PER_TRADE = 0.01        # işlem başına sermayenin %1'i riske girer (giri
 MAX_POSITIONS = 5            # aynı anda en fazla açık pozisyon (bekleyen alım emirleri dahil)
 MAX_POSITION_PCT = 0.20      # tek pozisyon sermayenin en fazla %20'si
 DAILY_LOSS_LIMIT = 0.02      # gün içi kayıp %2'yi aşarsa yeni alım yapılmaz
-TAKE_PROFIT = "t2"           # kâr al emri: "t1" veya "t2"
-BREAKEVEN_AT_T1 = True       # fiyat Hedef 1'e ulaşınca stop giriş fiyatına çekilir
+TAKE_PROFIT = None           # sabit kâr al yok ("t1"/"t2" verilirse bracket kâr al emri de konur)
+TRAIL_ATR = 3.5              # iz süren stop: girişten beri en yüksek fiyat - 3.5 x ATR (yalnız yukarı taşınır)
+BREAKEVEN_AT_T1 = False      # iz süren stop bunu kapsıyor
 EXIT_SIGNALS = ["S_BREAKDOWN", "S_TREND", "S_DEATH"]   # elde varsa kapanışta bu sinyallerde çık
 EXIT_BEFORE_EARNINGS = True  # bilançodan 1 gün önce pozisyonu kapat
