@@ -47,15 +47,19 @@ class Alpaca:
         return self._r("GET", "/v2/positions")
 
     def open_orders(self):
-        return self._r("GET", "/v2/orders", params={"status": "open", "nested": "true", "limit": 500})
+        # nested=false: bacaklar (stop/kâr al) ayrı emir olarak gelir; ana emir dolduktan sonra da görünür
+        return self._r("GET", "/v2/orders", params={"status": "open", "nested": "false", "limit": 500})
 
     def bracket_buy(self, sym, qty, limit, stop, tp, client_id):
-        """Limitli alış + bağlı stop ve kâr al. GTC: bacaklar gece de korur; gerçekleşmeyen
-        giriş emirleri kapanışta bot tarafından iptal edilir."""
-        return self._r("POST", "/v2/orders", json={
-            "symbol": sym, "qty": str(qty), "side": "buy", "type": "limit", "limit_price": f"{limit:.2f}",
-            "time_in_force": "gtc", "order_class": "bracket", "client_order_id": client_id,
-            "take_profit": {"limit_price": f"{tp:.2f}"}, "stop_loss": {"stop_price": f"{stop:.2f}"}})
+        """Limitli alış + bağlı stop (tp verilirse kâr al da). GTC: stop gece de korur; gerçekleşmeyen
+        giriş emirleri kapanışta bot tarafından iptal edilir. tp yoksa 'oto' (yalnız stop) emri."""
+        body = {"symbol": sym, "qty": str(qty), "side": "buy", "type": "limit", "limit_price": f"{limit:.2f}",
+                "time_in_force": "gtc", "client_order_id": client_id, "stop_loss": {"stop_price": f"{stop:.2f}"}}
+        if tp:
+            body.update({"order_class": "bracket", "take_profit": {"limit_price": f"{tp:.2f}"}})
+        else:
+            body["order_class"] = "oto"
+        return self._r("POST", "/v2/orders", json=body)
 
     def replace_stop(self, order_id, stop):
         return self._r("PATCH", f"/v2/orders/{order_id}", json={"stop_price": f"{stop:.2f}"})
@@ -158,23 +162,11 @@ def run(summary, by, mode, state, client=None):
             except RuntimeError as e:
                 msgs.append(f"⚠️ {sym} kapatılamadı: {e}")
 
-    # 2) Stopu başa baş noktasına çek (Hedef 1 görüldüyse)
-    if C.BREAKEVEN_AT_T1 and mode == "intraday":
-        for sym, p in pos.items():
-            entry, price = float(p["avg_entry_price"]), float(p["current_price"])
-            s = by.get(sym)
-            if not s or not s.get("atr"):
-                continue
-            if price >= entry + C.T1_ATR * s["atr"]:
-                for o in flat:
-                    if o["symbol"] == sym and o["type"] in ("stop", "stop_limit") and o["side"] == "sell" \
-                            and float(o["stop_price"]) < entry:
-                        try:
-                            api.replace_stop(o["id"], entry)
-                            msgs.append(f"{tag} 🔒 <b>{sym}</b> Hedef 1 görüldü, stop giriş fiyatına çekildi (${entry:,.2f})")
-                            _log({"sym": sym, "side": "stop_to_be", "stop": entry})
-                        except RuntimeError as e:
-                            print(e)
+    # 2) İz süren stop: girişten beri en yüksek fiyat - TRAIL_ATR x ATR; stop yalnız yukarı taşınır
+    if C.TRAIL_ATR and mode in ("intraday", "post"):
+        msgs += _trail_stops(api, pos, flat, by, state, tag)
+    state["held"] = sorted(pos)
+    state["trail"] = {k: v for k, v in state.get("trail", {}).items() if k in pos}
 
     # 3) Girişler (yalnız seans içinde)
     def _lvl(sym, kind):
@@ -209,6 +201,38 @@ def run(summary, by, mode, state, client=None):
         return msgs, portfolio
 
     return msgs + _manage_entries(api, summary, by, state, pos, orders, equity, bp, tag, today), portfolio
+
+
+def _trail_stops(api, pos, flat, by, state, tag):
+    msgs = []
+    trail = state.setdefault("trail", {})
+    for sym, p in pos.items():
+        s = by.get(sym)
+        entry, price = float(p["avg_entry_price"]), float(p["current_price"])
+        leg = next((o for o in flat if o["symbol"] == sym and o["side"] == "sell"
+                    and o.get("type") in ("stop", "stop_limit") and o.get("stop_price")), None)
+        if not s or not s.get("atr") or not leg:
+            if not leg:
+                msgs.append(f"⚠️ <b>{sym}</b> için açık stop emri bulunamadı – pozisyon korumasız olabilir, Alpaca'dan kontrol et")
+            continue
+        t = trail.setdefault(sym, {"hi": max(entry, price), "msg": float(leg["stop_price"])})
+        t["hi"] = max(t["hi"], price, s.get("high") or price)
+        cur = float(leg["stop_price"])
+        new = round(t["hi"] - C.TRAIL_ATR * s["atr"], 2)
+        if new > cur * 1.002 and new < price:
+            try:
+                api.replace_stop(leg["id"], new)
+                _log({"sym": sym, "side": "trail", "stop": new, "old": cur, "hi": t["hi"]})
+                # Bildirim: stop girişin üstüne ilk çıktığında ya da son bildirimden 0.5 ATR yükseldiğinde
+                crossed = cur < entry <= new
+                if crossed or new - t.get("msg", cur) >= 0.5 * s["atr"]:
+                    t["msg"] = new
+                    lock = (new / entry - 1) * 100
+                    msgs.append(f"{tag} 🔒 <b>{sym}</b> iz süren stop yükseltildi: ${cur:,.2f} → ${new:,.2f} "
+                                f"(en yüksek ${t['hi']:,.2f}; stop girişe göre {lock:+.1f}%)")
+            except RuntimeError as e:
+                print(e)
+    return msgs
 
 
 def _bot_entries(orders):
@@ -284,9 +308,9 @@ def _manage_entries(api, summary, by, state, pos, orders, equity, bp, tag, today
         if price < pl["zoneLow"]:
             continue   # bölgenin altına düşmüş: düşen bıçağı tutma
         limit = min(price, pl["zoneHigh"])
-        stop, tp = pl["stop"], pl[C.TAKE_PROFIT]
+        stop, tp = pl["stop"], (pl[C.TAKE_PROFIT] if C.TAKE_PROFIT else None)
         qty, risk_ps = _size(equity, bp, limit, stop)
-        if qty < 1 or tp <= limit:
+        if qty < 1 or (tp is not None and tp <= limit):
             continue
         snap = decision_snapshot(s)
         try:
@@ -295,8 +319,9 @@ def _manage_entries(api, summary, by, state, pos, orders, equity, bp, tag, today
             slots -= 1
             bp -= qty * limit
             now = "fiyat bölgede, hemen gerçekleşebilir" if price <= pl["zoneHigh"] * 1.002 else f"şu an ${price:,.2f}, geri çekilme bekleniyor"
+            exit_txt = f"Kâr al ${tp:,.2f}" if tp else f"Kâr al yok, iz süren stop {C.TRAIL_ATR} ATR"
             msgs.append(f"{tag} 🟢 <b>{t}</b> LİMİTLİ ALIŞ emri · {qty} adet @ ${limit:,.2f} (≈${qty*limit:,.0f}) – {now}\n"
-                        f"   Stop ${stop:,.2f} · risk ≈${qty*risk_ps:,.0f} = sermayenin %{qty*risk_ps/equity*100:.1f} · Kâr al ${tp:,.2f}\n"
+                        f"   Stop ${stop:,.2f} · risk ≈${qty*risk_ps:,.0f} = sermayenin %{qty*risk_ps/equity*100:.1f} · {exit_txt}\n"
                         f"   {_parts_text(snap)}\n"
                         + "\n".join(f"   • {w}" for w in snap["why"]))
             _log({"sym": t, "side": "buy_limit", "qty": qty, "limit": limit, "stop": stop, "tp": tp, "decision": snap})

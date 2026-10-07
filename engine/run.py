@@ -92,7 +92,7 @@ def chart_payload(df, sig, events, n=300):
     }
 
 
-def build(mode: str, now_ny: datetime, prices=None, fund=None, monthly=None):
+def build(mode: str, now_ny: datetime, prices=None, fund=None, monthly=None, extra=None):
     cands = C.CANDIDATES + (C.ADRS if C.INCLUDE_ADRS else [])
     if prices is None:
         prices = D.download_prices(cands + [C.BENCHMARK], period="3y")
@@ -100,6 +100,8 @@ def build(mode: str, now_ny: datetime, prices=None, fund=None, monthly=None):
         fund = D.fundamentals([t for t in cands if t in prices], force=(mode == "pre"))
     bench = prices.get(C.BENCHMARK)
     top, leaders, tracked = pick_universe(fund, set(prices))
+    # Elde tutulan pozisyonlar listeden düşse bile izlenmeye devam etsin (iz süren stop için)
+    tracked += [t for t in (extra or []) if t in prices and t not in tracked]
 
     # Mevsimsellik: aylık 11 yıllık veri, günde bir kez
     if monthly is None:
@@ -149,7 +151,7 @@ def build(mode: str, now_ny: datetime, prices=None, fund=None, monthly=None):
             "mcap": f.get("marketCap"), "isTop": t in top,
             "rank": top.index(t) + 1 if t in top else None,
             "leader": any(t in v for v in leaders.values()),
-            "price": r2(row["Close"]), "chg": r2((row["Close"] / prev_close - 1) * 100),
+            "price": r2(row["Close"]), "high": r2(row["High"]), "chg": r2((row["Close"] / prev_close - 1) * 100),
             "trend": last["trend"], "rsi": r2(row["rsi"]), "atr": r2(row["atr"]),
             "ema20": r2(row["ema20"]), "ema50": r2(row["ema50"]), "ema200": r2(row["ema200"]),
             "hh20": r2(row["hh"]), "ll20": r2(row["ll"]), "res60": r2(row["res60"]), "sup60": r2(row["sup60"]),
@@ -349,7 +351,8 @@ def main():
     state_tag = "" if detect_mode(now_ny) == mode else "|elle"
     # Elle başlatılan ve gerçek saate uymayan çalışma (ör. seans içinde "post"): gün sonu kayıtlarını bozmasın
     state_tag = "" if detect_mode(now_ny) == mode else "|elle"
-    summary, by = build(mode, now_ny)
+    state = D.load_state()
+    summary, by = build(mode, now_ny, extra=state.get("held", []))
     if a.ping:
         telegram.send(f"✅ <b>Borsa takip sistemi güncellendi</b>\n{len(summary['stocks'])} hisse izleniyor · "
                       f"{len(summary['picks'])} stratejik aday: {', '.join(summary['picks'][:10])}"
@@ -358,7 +361,6 @@ def main():
         write_status({"mode": "push", "alpaca": trader.STATUS})
     if a.no_telegram:
         return
-    state = D.load_state()
     if mode in ("intraday", "post") and not summary["marketOpenToday"]:
         print("Bugün piyasa kapalı (tatil); bildirim yok.")
         return
