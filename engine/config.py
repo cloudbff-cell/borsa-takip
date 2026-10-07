@@ -51,6 +51,9 @@ BREAKOUT_LEN = 20
 VOLUME_MULT = 1.5
 ATR_LEN = 14
 STOP_ATR, T1_ATR, T2_ATR = 2.0, 2.0, 4.0
+# Giriş kuralları (puan 100 üzerinden)
+ENTRY_SIGNAL_MIN_SCORE = 70    # son 3 günde AL sinyali varsa gereken en düşük puan
+ENTRY_TREND_MIN_SCORE = 80     # sinyal yoksa: yükseliş trendi + bu puan + 20 EMA'ya geri çekilmede alım
 EARNINGS_GUARD_DAYS = 3        # bilançoya bu kadar gün kala yeni alım sinyali "riskli" işaretlenir
 FORWARD_DAYS = 20              # geçmiş sinyal başarısı ölçülürken bakılan gün sayısı
 
