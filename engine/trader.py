@@ -12,11 +12,14 @@ Emir mantığı:
   Koruma : en fazla MAX_POSITIONS pozisyon, günlük kayıp limiti, hisse başına günde tek giriş.
 """
 import json
+import re
 import math
 import os
 from datetime import datetime
 
 import requests
+from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from . import config as C
 from . import data as D
@@ -145,11 +148,12 @@ def run(summary, by, mode, state, client=None):
     today = summary["lastBar"]
 
     # 1) Çıkışlar: kapanışta teyitli SAT sinyali veya bilanço öncesi (post modunda; emir ertesi açılışta gerçekleşir)
-    closed = set()
+    m_msgs, closed = manual_sells(api, pos, flat, by, state, tag)
+    msgs += m_msgs
     if mode == "post":
         for sym, p in pos.items():
             s = by.get(sym)
-            if not s:
+            if not s or sym in closed:
                 continue
             reason = next((g["name"] for g in s["signals"] if g["code"] in C.EXIT_SIGNALS), None)
             d2e = s["fund"]["daysToEarnings"]
@@ -291,6 +295,55 @@ def _trail_stops(api, pos, flat, by, state, tag):
     return msgs
 
 
+def manual_sells(api, pos, flat, by, state, tag):
+    """komutlar/sat.json: [{"sembol": "MU", "tarih": "YYYY-MM-DD"}] – o gün (New York tarihi) pozisyonu kapat.
+    Piyasa kapalıyken verilen kapanış emri Alpaca'da sıraya girer ve açılışta gerçekleşir.
+    Aynı gün o hisseye yeniden alım yapılmaz."""
+    p = Path("komutlar/sat.json")
+    if not p.exists():
+        return [], set()
+    try:
+        cmds = json.loads(p.read_text())
+    except ValueError as e:
+        return [f"⚠️ komutlar/sat.json okunamadı: {e}"], set()
+    today = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+    msgs, closed = [], set()
+    block = state.setdefault("blocked", {})
+    for c in cmds:
+        sym, day = str(c.get("sembol", "")).upper(), str(c.get("tarih", ""))
+        if day != today or not sym:
+            continue
+        block[sym] = today
+        key = f"manual|{today}|{sym}"
+        if key in state["sent"]:
+            continue
+        for o in flat:                      # bekleyen alışları ve bağlı stop/kâr al emirlerini kaldır
+            if o["symbol"] == sym and o.get("type") != "market":
+                try:
+                    api.cancel(o["id"])
+                except RuntimeError as e:
+                    print(e)
+        if sym not in pos:
+            state["sent"][key] = today
+            msgs.append(f"{tag} ℹ️ <b>{sym}</b> satış komutu: açık pozisyon yok, bekleyen emirler iptal edildi")
+            continue
+        p0 = pos[sym]
+        try:
+            api.close_position(sym)
+            state["sent"][key] = today
+            closed.add(sym)
+            pl = float(p0.get("unrealized_pl", 0))
+            msgs.append(f"{tag} 🔴 <b>{sym}</b> SATIŞ emri (senin komutun) · {p0['qty']} adet · "
+                        f"son K/Z ${pl:,.2f} – piyasa kapalıysa açılışta gerçekleşir")
+            _log({"sym": sym, "side": "sell", "qty": p0["qty"], "reason": "kullanıcı komutu", "pl": pl,
+                  "decision": decision_snapshot(by.get(sym))})
+        except RuntimeError as e:
+            msgs.append(f"⚠️ <b>{sym}</b> satış komutu uygulanamadı: {e}")
+    if msgs:
+        STATUS["manuel"] = [re.sub("<[^>]+>", "", m) for m in msgs]
+    return msgs, closed
+
+
 def _bot_entries(orders):
     return {o["symbol"]: o for o in orders
             if o["side"] == "buy" and str(o.get("client_order_id", "")).startswith("bt-")
@@ -358,6 +411,8 @@ def _manage_entries(api, summary, by, state, pos, orders, equity, bp, tag, today
         s = by[t]
         pl = s.get("plan")
         key = f"entry|{today}|{t}"
+        if state.get("blocked", {}).get(t) == datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d"):
+            continue
         if not pl or t in pos or t in entries or key in state["sent"]:
             continue
         price = s["price"]

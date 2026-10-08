@@ -80,8 +80,8 @@ def main():
     # Günlük kayıp limiti
     f3 = FakeAlpaca(day_pl=-0.025)
     m3, _ = trader.run(summary, by, "intraday", {"sent": {}}, f3)
-    assert not [c for c in f3.calls if c[0] == "buy"] and "limit" in m3[0]
-    print("KAYIP LİMİTİ:", m3[0])
+    assert not [c for c in f3.calls if c[0] == "buy"] and any("limit" in m for m in m3)
+    print("KAYIP LİMİTİ:", [m for m in m3 if "limit" in m][0])
 
     # Maksimum pozisyon: 5 pozisyon varken alım yok
     pos = [{"symbol": f"X{i}", "qty": "1", "avg_entry_price": "10", "current_price": "10", "unrealized_pl": "0",
@@ -192,6 +192,25 @@ def main():
     f10 = FakeAlpaca(entries=ent3)
     trader.run(summary, by, "intraday", {"sent": {f"entry|{summary['lastBar']}|{t1}": "x"}}, f10)
     assert ("cancel", "e3") in f10.calls and [c for c in f10.calls if c[0] == "buy" and c[1] == t1]
+    # Kullanıcı satış komutu: o gün pozisyonu kapatır, bağlı emirleri iptal eder, yeniden alım yapılmaz
+    import json as _j, os as _o, tempfile as _t
+    from zoneinfo import ZoneInfo as _Z
+    d0 = _o.getcwd(); tmp = _t.mkdtemp(); _o.chdir(tmp); _o.makedirs("komutlar"); _o.makedirs("cache")
+    tday = datetime.now(_Z("America/New_York")).strftime("%Y-%m-%d")
+    sym = summary["picks"][0]
+    _j.dump([{"sembol": sym, "tarih": tday}], open("komutlar/sat.json", "w"))
+    pos_m = [{"symbol": sym, "qty": "4", "avg_entry_price": "10", "current_price": "11", "unrealized_pl": "4",
+              "unrealized_plpc": "0.1"}]
+    f16 = FakeAlpaca(positions=pos_m)
+    st16 = {"sent": {}}
+    m16, _ = trader.run(summary, by, "intraday", st16, f16)
+    assert ("close", sym) in f16.calls and ("cancel", "o2") in f16.calls, f16.calls
+    assert not [c for c in f16.calls if c[0] in ("buy", "stop_sell") and c[1] == sym], f16.calls
+    f17 = FakeAlpaca()                     # aynı gün tekrar: kapatma tekrarlanmaz, yeniden alım yok
+    trader.run(summary, by, "intraday", st16, f17)
+    assert not [c for c in f17.calls if c[1] == sym], f17.calls
+    _o.chdir(d0)
+    print("KOMUT:", [m for m in m16 if "komutun" in m][0])
     print("Tüm işlem testleri geçti.")
 
 

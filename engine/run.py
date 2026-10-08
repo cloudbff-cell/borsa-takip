@@ -380,7 +380,9 @@ def main():
         telegram.send(f"✅ <b>Borsa takip sistemi güncellendi</b>\n{len(summary['stocks'])} hisse izleniyor · "
                       f"{len(summary['picks'])} stratejik aday: {', '.join(summary['picks'][:10])}"
                       + (f"\n📊 Panel: {PAGES_URL}" if PAGES_URL else ""))
-        trade_step(summary, by, "check", D.load_state())   # yalnız bağlantı kontrolü, emir yok
+        st = D.load_state()
+        trade_step(summary, by, "check", st)   # bağlantı kontrolü + varsa kullanıcı satış komutları
+        D.save_state(st)
         write_status({"mode": "push", "alpaca": trader.STATUS})
     if a.no_telegram:
         return

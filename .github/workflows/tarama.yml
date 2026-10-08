@@ -10,7 +10,7 @@ on:
   # Kod güncellenince paneli hemen yeniden oluştur (bildirim ve emir yok)
   push:
     branches: [main]
-    paths: ["engine/**", "site/**", ".github/workflows/**", "requirements.txt"]
+    paths: ["engine/**", "site/**", ".github/workflows/**", "requirements.txt", "komutlar/**"]
   workflow_dispatch:
     inputs:
       mode:
