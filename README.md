@@ -65,3 +65,9 @@ cd site && python -m http.server       # http://localhost:8000
 - **Çıkış:** Stop ya da kâr al emri tetiklenince pozisyon kapanır. Kapanışta teyit edilen bir SAT sinyali gelirse ya da bilançoya 1 gün kalırsa da satılır. Fiyat ilk hedefe ulaşınca stop giriş fiyatına çekilir.
 - **Risk:** İşlem başına sermayenin %1'i riske girer. Aynı anda en fazla 5 pozisyon açılır ve tek pozisyon sermayenin en fazla %20'si olur. Günlük kayıp %2'yi aşarsa o gün yeni alım yapılmaz.
 - **Açma/kapama:** Actions Variables altındaki `TRADING_ENABLED` değeri `true` ise bot çalışır, `false` ise durur. Gerçek hesaba geçmek için `ALPACA_PAPER` değişkenini `false` yapmak ve gerçek hesabın API anahtarlarını girmek gerekir.
+
+## Kripto bölümü (BTC, ETH)
+- Sermayenin %10'u; işlem başına sermayenin %0,5'i risk, coin başına en fazla %5. Hisse bölümü kalan %90 ile hesaplanır.
+- Puan: teknik 40 + 90 günlük momentum 20 + hacim teyidi 5 (100'e ölçeklenir). Giriş kuralları hisselerle aynı (65/75).
+- Emir: limitli alış (GTC); dolunca stop-limit satış. İz süren stop 3 ATR. Fiyat stopun altına boşlukla inerse piyasa emriyle kapatılır.
+- SAT sinyali çıkışı yok (10 yıllık testte kriptoda sonucu kötüleştirdi). 7/24 çalışır; her UTC günü kapanışında Telegram'a kripto özeti.

@@ -79,6 +79,11 @@ ul.notes{margin:4px 0;padding-left:18px;color:var(--ink2)}
     <div id="pfBody"></div>
   </section>
 
+  <section class="card" id="kripto" hidden>
+    <h2>Kripto (BTC · ETH)</h2>
+    <div id="kriptoBody"></div>
+  </section>
+
   <section class="card">
     <h2>Stratejik alım adayları</h2>
     <div class="picks" id="picks"></div>
@@ -115,6 +120,10 @@ const pct=v=>v==null?"–":`<span class="${v>=0?'up':'down'}">${v>=0?'+':''}${fm
 const mcap=v=>!v?"–":v>=1e12?fmt(v/1e12,2)+" T$":fmt(v/1e9,0)+" Mr$";
 let S,BY={},filt="all",sortKey="score",sortDir=-1,charts=[];
 
+fetch("data/crypto.json",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(k=>{if(!k||!k.coins||!k.coins.length)return;
+  $("#kripto").hidden=false;
+  $("#kriptoBody").innerHTML=`<div class="scroll"><table><thead><tr><th>Coin</th><th class="r">Fiyat</th><th class="r">24s %</th><th>Trend</th><th class="r">RSI</th><th class="r">90g %</th><th class="r">Puan</th><th>Durum</th></tr></thead><tbody>${k.coins.map(c=>`<tr><td><b>${c.t.split("-")[0]}</b></td><td class="r num">$${fmt(c.price)}</td><td class="r num">${pct(c.chg)}</td><td>${c.trend}</td><td class="r num">${fmt(c.rsi,0)}</td><td class="r num">${pct(c.ret90)}</td><td class="r num"><b>${Math.round(c.score)}</b></td><td class="small" style="white-space:normal">${c.entry?`Aday (${c.entry=="sinyal"?"AL sinyali":"geri çekilme"}) · bölge $${fmt(c.plan.zoneLow)}–$${fmt(c.plan.zoneHigh)} · stop $${fmt(c.plan.stop)}`:(c.recent.length?c.recent.join(", "):"–")}</td></tr>`).join("")}</tbody></table></div>`+
+  (k.positions&&k.positions.length?`<p class="small">Pozisyonlar: ${k.positions.map(p=>`${p.symbol} ${(+p.qty).toFixed(4)} · K/Z $${fmt(+p.unrealized_pl)}`).join(" · ")}</p>`:"");}).catch(()=>{});
 fetch("data/summary.json",{cache:"no-store"}).then(r=>r.json()).then(d=>{S=d;d.stocks.forEach(s=>BY[s.t]=s);render();
   const h=location.hash.slice(1);if(h&&BY[h])openDetail(h);});
 

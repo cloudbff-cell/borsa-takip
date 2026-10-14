@@ -70,6 +70,23 @@ class Alpaca:
             "symbol": sym, "qty": str(qty), "side": "sell", "type": "stop", "stop_price": f"{stop:.2f}",
             "time_in_force": "gtc", "client_order_id": client_id})
 
+    # ---- kripto ----
+    def asset(self, sym):
+        return self._r("GET", f"/v2/assets/{sym}")
+
+    def crypto_buy(self, sym, qty, limit, client_id):
+        return self._r("POST", "/v2/orders", json={
+            "symbol": sym, "qty": str(qty), "side": "buy", "type": "limit", "limit_price": str(limit),
+            "time_in_force": "gtc", "client_order_id": client_id})
+
+    def crypto_stop(self, sym, qty, stop, limit, client_id):
+        return self._r("POST", "/v2/orders", json={
+            "symbol": sym, "qty": str(qty), "side": "sell", "type": "stop_limit", "stop_price": str(stop),
+            "limit_price": str(limit), "time_in_force": "gtc", "client_order_id": client_id})
+
+    def replace_stop_limit(self, order_id, stop, limit):
+        return self._r("PATCH", f"/v2/orders/{order_id}", json={"stop_price": str(stop), "limit_price": str(limit)})
+
     def replace_stop(self, order_id, stop):
         return self._r("PATCH", f"/v2/orders/{order_id}", json={"stop_price": f"{stop:.2f}"})
 
@@ -141,11 +158,14 @@ def run(summary, by, mode, state, client=None):
     equity, last_eq = float(acct["equity"]), float(acct["last_equity"])
     bp = float(acct.get("buying_power", equity))
     day_pl = (equity - last_eq) / last_eq if last_eq else 0.0
-    pos = {p["symbol"]: p for p in api.positions()}
-    orders = api.open_orders()
+    # Kripto pozisyon/emirleri kripto modülü yönetir; burada yalnız hisseler
+    pos = {p["symbol"]: p for p in api.positions() if p.get("asset_class", "us_equity") != "crypto"}
+    orders = [o for o in api.open_orders() if o.get("asset_class", "us_equity") != "crypto"]
     flat = _legs(orders)
     tag = "🧪 SANAL" if getattr(api, "paper", True) else "💵 GERÇEK"
     today = summary["lastBar"]
+    if getattr(C, "CRYPTO_ENABLED", False):
+        equity *= (1 - C.CRYPTO_ALLOC)        # hisse bölümü sermayenin %90'ı
 
     # 1) Çıkışlar: kapanışta teyitli SAT sinyali veya bilanço öncesi (post modunda; emir ertesi açılışta gerçekleşir)
     m_msgs, closed = manual_sells(api, pos, flat, by, state, tag)
@@ -279,6 +299,20 @@ def _trail_stops(api, pos, flat, by, state, tag):
             continue
         cur = float(leg["stop_price"])
         new = round(t["hi"] - C.TRAIL_ATR * s["atr"], 2)
+        if new >= price and new > cur:
+            # Taramalar arasında fiyat tepeden 3 ATR'den fazla düştü: stop zaten tetiklenmiş olmalıydı -> kapat
+            for o in sells:
+                try:
+                    api.cancel(o["id"])
+                except RuntimeError as e:
+                    print(e)
+            try:
+                api.close_position(sym)
+                _log({"sym": sym, "side": "sell", "qty": p["qty"], "reason": "iz süren stop seviyesinin altında"})
+                msgs.append(f"{tag} 🔴 <b>{sym}</b> SATIŞ: fiyat (${price:,.2f}) iz süren stop seviyesinin (${new:,.2f}) altında")
+            except RuntimeError as e:
+                msgs.append(f"⚠️ {sym} kapatılamadı: {e}")
+            continue
         if new > cur * 1.002 and new < price:
             try:
                 api.replace_stop(leg["id"], new)

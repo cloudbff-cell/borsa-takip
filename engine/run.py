@@ -18,6 +18,7 @@ from . import config as C
 from . import data as D
 from . import telegram
 from . import trader
+from . import crypto
 from .analysis import fundamental_view, revision_view, seasonality, volume_view
 from .indicators import add_indicators
 from .signals import SIGNALS, aggregate_stats, compute_signals, signal_events, technical_score, trade_levels
@@ -365,8 +366,14 @@ def main():
     now_ny = datetime.now(NY)
     mode = detect_mode(now_ny) if a.mode == "auto" else a.mode
     print("Mod:", mode, now_ny)
+    # Kripto 7/24: her çalışmada (hafta sonu ve gece dahil)
+    if C.CRYPTO_ENABLED and not a.no_telegram:
+        st0 = D.load_state()
+        crypto_step(st0, "trade")
+        D.save_state(st0)
     if mode == "off" and not a.force:
         print("Piyasa saatleri dışında, çıkılıyor.")
+        write_status({"mode": "off", "alpaca": trader.STATUS})
         return
     if mode == "off":
         mode = "post"
@@ -382,6 +389,8 @@ def main():
                       + (f"\n📊 Panel: {PAGES_URL}" if PAGES_URL else ""))
         st = D.load_state()
         trade_step(summary, by, "check", st)   # bağlantı kontrolü + varsa kullanıcı satış komutları
+        if C.CRYPTO_ENABLED:
+            crypto_step(st, "check")
         D.save_state(st)
         write_status({"mode": "push", "alpaca": trader.STATUS})
     if a.no_telegram:
@@ -403,10 +412,53 @@ def main():
         if mode == "post":
             key = f"close|{summary['lastBar']}{state_tag}"
             if key not in state["sent"]:
-                telegram.send(close_message(summary, by) + portfolio_message(portfolio, state))
+                cl = state.get("crypto", {}).get("lines") or []
+                telegram.send(close_message(summary, by) + portfolio_message(portfolio, state) + "\n".join(cl))
                 state["sent"][key] = summary["lastBar"]
     D.save_state(state)
     write_status({"mode": mode, "alpaca": trader.STATUS})
+
+
+def crypto_step(state, mode="trade", client=None, prices=None):
+    """BTC/ETH: analiz + (etkinse) emir yönetimi + günlük kripto özeti. Hata diğer işleri durdurmaz."""
+    cs = state.setdefault("crypto", {})
+    try:
+        if prices is None:
+            prices = D.download_prices(list(C.CRYPTO), period="2y")
+        coins = crypto.analyze(prices)
+        positions, msgs = [], []
+        enabled = os.getenv("TRADING_ENABLED", "").lower() == "true" or client is not None
+        if enabled and coins:
+            api = client or trader.Alpaca()
+            acct = api.account()
+            trader.STATUS["crypto"] = acct.get("crypto_status")
+            if acct.get("crypto_status", "ACTIVE") != "ACTIVE":
+                msgs = [f"⚠️ Alpaca hesabında kripto işlem kapalı (crypto_status={acct.get('crypto_status')})"]
+                key = f"cryptooff|{datetime.utcnow():%Y-%m-%d}"
+                if key in state["sent"]:
+                    msgs = []
+                state["sent"][key] = f"{datetime.utcnow():%Y-%m-%d}"
+            else:
+                tag = "🧪 SANAL" if getattr(api, "paper", True) else "💵 GERÇEK"
+                msgs = crypto.run(api, coins, state, tag, mode)
+                positions = [p for p in api.positions() if p.get("asset_class") == "crypto"]
+        if msgs:
+            telegram.send("₿ <b>Kripto işlemleri</b>\n\n" + "\n\n".join(msgs))
+        cs["lines"] = crypto.summary_lines(coins, positions)
+        cs["coins"] = coins
+        # Günlük kripto özeti: yeni UTC günü kapandığında bir kez (hafta sonu dahil)
+        if coins and mode == "trade":
+            key = f"cryptoday|{coins[0]['barDate']}"
+            if key not in state["sent"]:
+                state["sent"][key] = coins[0]["barDate"]
+                telegram.send(f"₿ <b>Kripto günlük özet</b> – {coins[0]['barDate']} kapanışı" + "\n".join(cs["lines"]))
+        (SITE / "data").mkdir(parents=True, exist_ok=True)
+        (SITE / "data" / "crypto.json").write_text(json.dumps({"coins": coins, "positions": positions}, default=str))
+        return coins
+    except Exception as e:  # noqa: BLE001
+        print("Kripto modülü hatası:", e)
+        trader.STATUS["cryptoError"] = str(e)[:200]
+        return []
 
 
 def trade_step(summary, by, mode, state, client=None):

@@ -90,3 +90,12 @@ TRAIL_ATR = 3.0              # iz süren stop: girişten beri en yüksek fiyat -
 BREAKEVEN_AT_T1 = False      # iz süren stop bunu kapsıyor
 EXIT_SIGNALS = ["S_BREAKDOWN", "S_TREND", "S_DEATH"]   # elde varsa kapanışta bu sinyallerde çık
 EXIT_BEFORE_EARNINGS = True  # bilançodan 1 gün önce pozisyonu kapat
+
+# ---------- Kripto bölümü (BTC, ETH – Alpaca, 7/24) ----------
+CRYPTO_ENABLED = True
+CRYPTO = {"BTC-USD": "BTC/USD", "ETH-USD": "ETH/USD"}   # Yahoo sembolü -> Alpaca sembolü
+CRYPTO_ALLOC = 0.10          # sermayenin %10'u kripto bölümü; hisse bölümü kalan %90 ile hesaplanır
+CRYPTO_RISK = 0.005          # kripto işlem başına sermayenin %0.5'i riske girer (giriş - stop)
+CRYPTO_TRAIL_ATR = 3.0       # iz süren stop (hisselerle aynı)
+CRYPTO_EXIT_SIGNALS = []     # 10 yıllık testte SAT sinyali çıkışları kriptoda sonucu kötüleştirdi; yalnız stoplar
+CRYPTO_STOP_LIMIT_GAP = 0.02 # stop-limit emrinde limit fiyatı stopun %2 altı (kriptoda düz stop emri yok)
