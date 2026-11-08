@@ -412,7 +412,7 @@ def main():
         if mode == "post":
             key = f"close|{summary['lastBar']}{state_tag}"
             if key not in state["sent"]:
-                cl = state.get("crypto", {}).get("lines") or []
+                cl = (state.get("crypto", {}).get("lines") or []) if C.CRYPTO_ENABLED else []
                 telegram.send(close_message(summary, by) + portfolio_message(portfolio, state) + "\n".join(cl))
                 state["sent"][key] = summary["lastBar"]
     D.save_state(state)

@@ -92,7 +92,7 @@ EXIT_SIGNALS = ["S_BREAKDOWN", "S_TREND", "S_DEATH"]   # elde varsa kapanışta 
 EXIT_BEFORE_EARNINGS = True  # bilançodan 1 gün önce pozisyonu kapat
 
 # ---------- Kripto bölümü (BTC, ETH – Alpaca, 7/24) ----------
-CRYPTO_ENABLED = True
+CRYPTO_ENABLED = False      # kapalı (kullanıcı isteği): kripto alımı ve analizi yapılmaz; True yaparak geri açılır
 CRYPTO = {"BTC-USD": "BTC/USD", "ETH-USD": "ETH/USD"}   # Yahoo sembolü -> Alpaca sembolü
 CRYPTO_ALLOC = 0.10          # sermayenin %10'u kripto bölümü; hisse bölümü kalan %90 ile hesaplanır
 CRYPTO_RISK = 0.005          # kripto işlem başına sermayenin %0.5'i riske girer (giriş - stop)
