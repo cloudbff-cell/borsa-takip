@@ -1,0 +1,46 @@
+name: VWAP + ORB sistemi 10 yıl testi (analiz)
+
+# Kullanıcının VWAP + ORB + Hacim sistemini 10 yıllık 5 dk veriyle test eder. İşlem yapmaz.
+# 5 dk veri cache5m/ önbelleğinde tutulur; sonraki testler yalnız eksik günleri indirir (çok daha hızlı).
+on:
+  push:
+    branches: [main]
+    paths: ["tools/vwap_orb_10y.py"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/cache/restore@v4
+        with:
+          path: cache
+          key: tarama-vwap-${{ github.run_id }}
+          restore-keys: tarama-
+      - name: 5 dk veri önbelleği
+        uses: actions/cache/restore@v4
+        with:
+          path: cache5m
+          key: data5m-${{ github.run_id }}
+          restore-keys: data5m-
+      - name: Test
+        env:
+          ALPACA_KEY_ID: ${{ secrets.ALPACA_KEY_ID }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: python -u tools/vwap_orb_10y.py
+      - name: 5 dk veri önbelleğini kaydet
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: cache5m
+          key: data5m-${{ github.run_id }}
