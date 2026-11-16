@@ -42,7 +42,7 @@ def trades_for(data, limit_pct=0.02, sp=0.02, tp=0.02):
             en = None
             for j in (i + 1, i + 2):
                 if j < len(d) and l[j] <= lvl:
-                    en = (j, min(o[j], lvl), "limit")
+                    en = (j, min(o[j], lvl), "limit_open" if o[j] <= lvl else "limit")
                     break
             if not en:
                 continue

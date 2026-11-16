@@ -63,7 +63,8 @@ def find_entry(d, i, how):
         lvl = c[i] * (1 - float(how[5:]) / 100) if not how.endswith("atr") else c[i] - 0.5 * atr[i]
         for j in (i + 1, i + 2):
             if j < n and l[j] <= lvl:
-                return j, min(o[j], lvl), "limit"
+                # açılış limitin altındaysa açılışta dolar (sonraki hareket bilinir); değilse gün içinde dolar
+                return j, min(o[j], lvl), ("limit_open" if o[j] <= lvl else "limit")
         return None
     raise ValueError(how)
 
@@ -81,7 +82,12 @@ def run_trade(d, j0, e, same_day, stop_pct, tp_pct, natural):
             return j0, tp, "hedef", amb
         if c[j0] <= stop:
             return j0, c[j0], "stop", amb
-    start = j0 if same_day == "limit" else j0 + 1
+    if same_day == "limit":
+        # gün içinde doldu: günün zirvesi alıştan ÖNCE olmuş olabilir -> o gün hedef sayılmaz (ileriye bakma yok);
+        # dip ise alıştan sonra olabilir -> stop sayılır (temkinli)
+        if l[j0] <= stop:
+            return j0, stop, "stop", amb
+    start = j0 if same_day == "limit_open" else j0 + 1
     for j in range(start, min(j0 + 1 + MAXD, n)):
         if j > j0 and o[j] <= stop:
             return j, o[j], "stop", amb
