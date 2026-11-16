@@ -63,13 +63,13 @@ class Alpaca:
         """Hesap ayarı (ör. no_shorting=True, max_margin_multiplier="1")."""
         return self._r("PATCH", "/v2/account/configurations", json=cfg)
 
-    def bars(self, symbols, start, end=None, timeframe="5Min", feed=None):
+    def bars(self, symbols, start, end=None, timeframe="5Min", feed=None, adjustment="raw"):
         """Alpaca piyasa verisi: {sembol: [{t,o,h,l,c,v,vw}, ...]} (sayfalama dahil)."""
         feed = feed or os.getenv("ALPACA_DATA_FEED", "iex")
         out, token = {}, None
         while True:
             p = {"symbols": ",".join(symbols), "timeframe": timeframe, "start": start, "limit": 10000,
-                 "feed": feed, "adjustment": "raw"}
+                 "feed": feed, "adjustment": adjustment}
             if end:
                 p["end"] = end
             if token:
