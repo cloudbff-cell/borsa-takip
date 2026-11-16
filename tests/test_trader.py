@@ -44,6 +44,7 @@ class FakeAlpaca:
 def main():
     import numpy as np
     from engine import config as C
+    C.STRATEGY = "eski"   # bu dosya eski swing kurallarını test eder
     tick = C.CANDIDATES + [C.BENCHMARK]
     full = {t: T.fake_prices(i) for i, t in enumerate(tick)}
     prices = {t: df.tail(756) for t, df in full.items()}

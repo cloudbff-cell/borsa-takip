@@ -51,6 +51,7 @@ GitHub'ın zamanlanmış çalışmaları yoğunlukta 5–20 dakika gecikebilir. 
 pip install -r requirements.txt
 python tests/test_offline.py          # ağsız, sentetik veriyle
 python tests/test_daytrade.py         # günlük işlem + İslami filtre (sahte Alpaca)
+python tests/test_dip.py              # ana strateji: 3 gün düşüş
 python -m engine.run --mode post --force --no-telegram   # gerçek veriyle, panel site/ klasörüne
 cd site && python -m http.server       # http://localhost:8000
 ```
@@ -60,7 +61,15 @@ cd site && python -m http.server       # http://localhost:8000
 - Seans içi sinyaller günün tamamlanmamış mumuna dayanır, kapanışta kaybolabilir. Kesin olanlar kapanış sonrası mesajdakilerdir.
 - "Geçmiş başarı" istatistikleri işlem maliyeti ve kayma payı içermez. Geçmiş sonuçlar gelecekteki sonuçları garanti etmez.
 
-## Otomatik işlem botu (Alpaca, varsayılan: sanal para)
+## Ana strateji: 3 gün düşüş + %2 aşağıdan limitli alış (`engine/dip.py`, `STRATEGY = "dip"`)
+- **Sinyal:** İslami filtreden geçen ilk 50 hissede, fiyat 200 günlük ortalamanın üstündeyken 3 gün üst üste düşük kapanış. Aynı gün birden fazla sinyal varsa 3 günlük düşüşü en büyük olan önce.
+- **Alış:** kapanıştan sonra, kapanışın %2 altına limitli alış emri. 2 seans içinde dolmazsa iptal.
+- **Satış:** alışla birlikte −%2 stop ve +%2 kâr al emri (dolum fiyatına göre ayarlanır). 10 seans içinde ikisi de olmazsa pozisyon kapatılır.
+- **Boyut:** en fazla 3 pozisyon, her biri sermayenin 1/3'ü; yalnız nakit, kaldıraç ve açığa satış yok.
+- **Neden:** 2017-2026 testinde (`tools/down3_analiz.py`) kapanışta almak −%2 stopla kârsızdı. Sinyalden sonra fiyat ortalama %2,8 daha düşüyor ve dip çoğunlukla ertesi gün geliyor. %2 aşağıdan alınca −%2/+%2 kuralıyla yıllık +%21,9 (3 pozisyon), en büyük düşüş −%6; üç alt dönemin hepsinde kârlı. Günlük veride aynı gün hem stop hem hedef görülen işlemler stop sayıldı; hisse listesi bugünün büyükleri olduğu için sonuçlar biraz iyimser.
+- **Eski strateji:** puan + AL sinyali + iz süren stop kuralı yeni alım yapmaz. Eldeki eski pozisyonlar kendi stoplarıyla kapanana kadar korunur. Geri dönmek için `config.py` → `STRATEGY = "eski"`.
+
+## Otomatik işlem botu – eski strateji (Alpaca, varsayılan: sanal para)
 - **Giriş:** Seans içindeki her taramada stratejik adaylar için alım bölgesinin üst sınırına limitli alış emri konur. Emre stop ve kâr al emirleri bağlıdır. Fiyat bölgeye indiğinde emri Alpaca anında gerçekleştirir.
 - **Güncelleme:** Aday listesinden çıkan ya da fiyatı alım bölgesinin altına düşen hissenin emri iptal edilir. Bölgesi %1'den fazla değişen hissenin emri yeni seviyeyle yeniden konur. Gün sonunda gerçekleşmemiş alış emirleri iptal edilir.
 - **Çıkış:** Stop ya da kâr al emri tetiklenince pozisyon kapanır. Kapanışta teyit edilen bir SAT sinyali gelirse ya da bilançoya 1 gün kalırsa da satılır. Fiyat ilk hedefe ulaşınca stop giriş fiyatına çekilir.

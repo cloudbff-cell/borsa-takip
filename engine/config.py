@@ -101,6 +101,18 @@ SECTOR_TR = {
     "Real Estate": "Gayrimenkul",
 }
 
+# ---------- Ana strateji ----------
+# "dip": 3 gün üst üste düşen (200 gün ort. üstündeki) hisseye kapanışın %2 altından limitli alış,
+#        -%2 stop / +%2 kâr al, en fazla 10 seans (engine/dip.py; 2017-2026 testi tools/down3_analiz.py).
+# "eski": puan + AL sinyali + iz süren stop (aşağıdaki RISK_PER_TRADE ... ayarları).
+STRATEGY = "dip"
+DIP_MAX_POSITIONS = 3        # her pozisyon sermayenin 1/3'ü (testte 3: yıllık +%21.9, 5: +%15.7, 8: +%9.9)
+DIP_LIMIT_BELOW = 0.02       # alış limiti: sinyal günü kapanışının %2 altı
+DIP_STOP = 0.02              # stop: alış fiyatının %2 altı
+DIP_TP = 0.02                # kâr al: alış fiyatının %2 üstü
+DIP_ENTRY_SESSIONS = 2       # limitli alış bu kadar seans dolmazsa iptal
+DIP_MAX_DAYS = 10            # pozisyon en fazla bu kadar seans tutulur
+
 # ---------- Otomatik işlem (Alpaca) ----------
 # Bot yalnızca TRADING_ENABLED=true ortam değişkeni varsa emir verir.
 # ALPACA_PAPER=false yapılmadıkça her zaman SANAL PARA (paper) hesabı kullanılır.

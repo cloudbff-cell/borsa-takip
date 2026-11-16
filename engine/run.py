@@ -21,6 +21,7 @@ from . import trader
 from . import crypto
 from . import sharia
 from . import daytrade
+from . import dip
 from .analysis import fundamental_view, revision_view, seasonality, volume_view
 from .indicators import add_indicators
 from .signals import SIGNALS, aggregate_stats, compute_signals, signal_events, technical_score, trade_levels
@@ -182,6 +183,7 @@ def build(mode: str, now_ny: datetime, prices=None, fund=None, monthly=None, ext
                         "name": SIGNALS[e["code"]][1]} for e in recent],
             "fund": fv, "season": sea,
             "sharia": sh.get(t) or {"ok": False, "reason": "veri yok", "hard": False},
+            "dip": dip.signal_view(df),
         })
         (SITE / "data" / "c" / f"{t}.json").write_text(json.dumps(chart_payload(df, sig, evs), separators=(",", ":")))
 
@@ -225,6 +227,8 @@ def build(mode: str, now_ny: datetime, prices=None, fund=None, monthly=None, ext
                       "trend": compute_signals(add_indicators(bench)).iloc[-1]["trend"] if bench is not None else None},
         "top": top, "leaders": {C.SECTOR_TR.get(k, k): v for k, v in leaders.items()},
         "picks": [s["t"] for s in picks], "warnings": [s["t"] for s in warnings],
+        "dipSignals": [s["t"] for s in sorted(stocks, key=lambda s: s["dip"].get("drop3", 0))
+                       if s["isTop"] and s["dip"].get("signal") and s["sharia"]["ok"]],
         "seasonal": [s["t"] for s in seasonal], "seasonalNext": [s["t"] for s in seasonal_next],
         "earnings": [s["t"] for s in earn], "stats": stats, "signalDefs": SIGNALS,
         "sharia": {"enabled": C.SHARIA_FILTER, "debtMax": C.SHARIA_DEBT_MAX, "cashMax": C.SHARIA_CASH_MAX,
@@ -293,7 +297,14 @@ def plan_message(summary, by):
             fv = s["fund"]
             L.append(f"• {t} – {fv['nextEarnings']} ({fv['daysToEarnings']} gün)" + (f" · {fv['expectation']}" if fv["expectation"] else ""))
         L.append("")
-    L.append("🎯 <b>Stratejik alım adayları</b> (kural tabanlı, tavsiye değildir)")
+    if C.STRATEGY == "dip":
+        L.append("📉 <b>Strateji: 3 gün düşüş + %2 aşağıdan limitli alış</b> (−%2 stop / +%2 kâr al)")
+        ds = summary.get("dipSignals") or []
+        L.append("Dün kapanışta sinyal verenler: " + (", ".join(
+            f"{t} (kapanış ${by[t]['dip']['close']}, limit ${by[t]['dip']['limit']})" for t in ds) or "yok"))
+        L.append("")
+    L.append("🎯 <b>Stratejik alım adayları</b> (kural tabanlı, tavsiye değildir)"
+             + (" – yalnız bilgi, bot bunlardan almaz" if C.STRATEGY == "dip" else ""))
     for t in summary["picks"]:
         s = by[t]
         p = s["plan"]

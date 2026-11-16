@@ -1,0 +1,138 @@
+"""Ana strateji (3 gün düşüş + %2 aşağıdan limit) testleri – sahte Alpaca ile, ağsız."""
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from engine import config as C  # noqa: E402
+from engine import dip, trader  # noqa: E402
+
+C.STRATEGY = "dip"
+
+
+class Fake:
+    paper = True
+
+    def __init__(self):
+        self.calls, self.pos, self.open, self.hist = [], [], [], []
+
+    def account(self):
+        return {"equity": "90000", "last_equity": "90000", "cash": "90000", "buying_power": "120000"}
+
+    def positions(self):
+        return self.pos
+
+    def open_orders(self):
+        return self.open
+
+    def orders(self, status="all", after=None, limit=500):
+        return self.hist
+
+    def configure(self, **k):
+        return k
+
+    def bracket_buy(self, sym, qty, lim, stop, tp, cid):
+        self.calls.append(("buy", sym, qty, lim, stop, tp, cid))
+        o = {"id": "B" + sym, "symbol": sym, "side": "buy", "client_order_id": cid, "status": "new",
+             "qty": str(qty), "limit_price": str(lim)}
+        self.open.append(o)
+        self.hist.append(dict(o, filled_qty="0"))
+
+    def cancel(self, oid):
+        self.calls.append(("cancel", oid))
+        self.open = [o for o in self.open if o["id"] != oid]
+
+    def close_position(self, s):
+        self.calls.append(("close", s))
+
+    def replace_stop(self, oid, v):
+        self.calls.append(("stop", oid, v))
+
+    def replace_limit(self, oid, v):
+        self.calls.append(("tp", oid, v))
+
+    def stop_sell(self, s, q, v, cid):
+        self.calls.append(("stop_sell", s, q, v))
+
+
+def stock(t, signal=True, drop=-4.0, close=100.0, top=True, ok=True):
+    return {"t": t, "isTop": top, "sharia": {"ok": ok}, "signals": [], "recent": [], "fund": {"daysToEarnings": None},
+            "dip": {"signal": signal, "drop3": drop, "close": close, "limit": round(close * 0.98, 2)}}
+
+
+def main():
+    # Sinyal hesabı
+    idx = pd.bdate_range(end="2026-11-13", periods=260)
+    c = pd.Series(np.linspace(50, 120, 260), index=idx)
+    c.iloc[-4:] = [124, 123, 121, 118]
+    v = dip.signal_view(pd.DataFrame({"Close": c}))
+    assert v["signal"] and v["limit"] == round(118 * 0.98, 2) and v["drop3"] < 0, v
+    c.iloc[-2] = 117
+    assert not dip.signal_view(pd.DataFrame({"Close": c}))["signal"]            # düşüş zinciri bozuk
+    c2 = pd.Series(np.linspace(200, 100, 260), index=idx)
+    assert not dip.signal_view(pd.DataFrame({"Close": c2}))["signal"]           # 200 gün ortalamasının altında
+
+    # Kapanış sonrası: sinyallere limitli alış (en büyük düşüş önce, en fazla 3, İslami/ilk 50 şartı)
+    stocks = [stock("AAA", drop=-3), stock("BBB", drop=-7), stock("CCC", drop=-5), stock("DDD", drop=-6),
+              stock("EEE", drop=-9, ok=False), stock("FFF", drop=-9, top=False), stock("GGG", signal=False)]
+    summary = {"lastBar": "2026-11-13", "stocks": stocks, "picks": []}
+    by = {s["t"]: s for s in stocks}
+    api, state = Fake(), {"sent": {}}
+    msgs, port = trader.run(summary, by, "post", state, api)
+    buys = [x for x in api.calls if x[0] == "buy"]
+    assert [b[1] for b in buys] == ["BBB", "DDD", "CCC"], buys
+    for _, s, q, lim, stop, tp, cid in buys:
+        assert cid.startswith("dip-") and abs(lim - 98) < 1e-9 and abs(stop - 96.04) < 1e-9 and abs(tp - 99.96) < 1e-9
+        assert q * lim <= 90000 / C.DIP_MAX_POSITIONS + 1
+    assert any("dolu" in m and "AAA" in m for m in msgs), msgs
+    print("Emirler:", [m.split("\n")[0] for m in msgs][:2])
+    # Aynı akşam tekrar çalışırsa yeni emir yok
+    trader.run(summary, by, "post", state, api)
+    assert len([x for x in api.calls if x[0] == "buy"]) == 3
+
+    # Ertesi akşam: BBB doldu (seviyeler gerçek fiyata göre düzeltilir), diğerleri 1 seans bekledi
+    summary2 = {"lastBar": "2026-11-16", "stocks": [stock("AAA", signal=False)], "picks": []}
+    api.open = [o for o in api.open if o["symbol"] != "BBB"] + [
+        {"id": "S1", "symbol": "BBB", "side": "sell", "type": "stop", "stop_price": "96.04", "qty": "300"},
+        {"id": "T1", "symbol": "BBB", "side": "sell", "type": "limit", "limit_price": "99.96", "qty": "300"}]
+    api.pos = [{"symbol": "BBB", "qty": "300", "avg_entry_price": "97.00", "current_price": "97.5",
+                "unrealized_pl": "150", "unrealized_plpc": "0.005", "market_value": "29250"},
+               {"symbol": "OLD", "qty": "5", "avg_entry_price": "50", "current_price": "55", "unrealized_pl": "25",
+                "unrealized_plpc": "0.1", "market_value": "275"}]
+    for h in api.hist:
+        if h["symbol"] == "BBB":
+            h["filled_qty"] = "300"
+    m2, port2 = trader.run(summary2, {"AAA": summary2["stocks"][0]}, "post", state, api)
+    assert ("stop", "S1", 95.06) in api.calls and ("tp", "T1", 98.94) in api.calls, api.calls
+    assert any("alış gerçekleşti" in m for m in m2)
+    assert {p["sym"] for p in port2["positions"]} == {"BBB", "OLD"}
+    assert not [x for x in api.calls if x[0] == "buy" and x[1] == "AAA"]
+    # Eski pozisyon eski kurallarla korunur (stopu yoksa koruyucu stop), yeni yapı onu satmaz
+    assert ("stop_sell", "OLD", 5, 46.0) in api.calls and ("close", "OLD") not in api.calls, api.calls
+
+    # 3. akşam: dolmayan alışlar 2 seans sonra iptal
+    summary3 = {"lastBar": "2026-11-17", "stocks": [], "picks": []}
+    trader.run(summary3, {}, "post", state, api)
+    assert ("cancel", "BDDD") in api.calls and ("cancel", "BCCC") in api.calls, api.calls
+
+    # 10 seans dolunca pozisyon kapatılır
+    for k in range(4, 12):
+        trader.run({"lastBar": f"2026-11-{14+k}", "stocks": [], "picks": []}, {}, "post", state, api)
+    assert ("close", "BBB") in api.calls, api.calls
+
+    # Stop emri kaybolursa yeniden kurulur (seans içi)
+    api.open = []
+    m4, _ = trader.run({"lastBar": "2026-12-01", "stocks": [], "picks": []}, {}, "intraday", state, api)
+    assert ("stop_sell", "BBB", 300, 95.06) in api.calls, api.calls
+
+    # Pozisyon kapanınca bildirim
+    api.pos = []
+    m5, _ = trader.run({"lastBar": "2026-12-02", "stocks": [], "picks": []}, {}, "intraday", state, api)
+    assert any("pozisyon kapandı" in m for m in m5), m5
+    print("Tüm 3 gün düşüş stratejisi testleri geçti.")
+
+
+if __name__ == "__main__":
+    main()

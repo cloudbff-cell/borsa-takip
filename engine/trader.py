@@ -23,6 +23,7 @@ from zoneinfo import ZoneInfo
 
 from . import config as C
 from . import data as D
+from . import dip
 
 STATUS = {}
 
@@ -138,6 +139,9 @@ class Alpaca:
     def replace_stop_limit(self, order_id, stop, limit):
         return self._r("PATCH", f"/v2/orders/{order_id}", json={"stop_price": str(stop), "limit_price": str(limit)})
 
+    def replace_limit(self, order_id, limit):
+        return self._r("PATCH", f"/v2/orders/{order_id}", json={"limit_price": f"{limit:.2f}"})
+
     def replace_stop(self, order_id, stop):
         return self._r("PATCH", f"/v2/orders/{order_id}", json={"stop_price": f"{stop:.2f}"})
 
@@ -248,10 +252,15 @@ def run(summary, by, mode, state, client=None):
     day_pl = (equity - last_eq) / last_eq if last_eq else 0.0
     # Kripto pozisyon/emirlerini kripto modülü, günlük işlem (dt-) pozisyonlarını daytrade modülü yönetir
     dt_syms = day_symbols(api)
-    pos = {p["symbol"]: p for p in api.positions()
-           if p.get("asset_class", "us_equity") != "crypto" and p["symbol"] not in dt_syms}
-    orders = [o for o in api.open_orders()
-              if o.get("asset_class", "us_equity") != "crypto" and o["symbol"] not in dt_syms]
+    # Yeni ana strateji (dip.py) kendi 'dip-' pozisyonlarını yönetir; buradaki eski kurallar onlara dokunmaz
+    dip_syms = dip.dip_symbols(api) if C.STRATEGY == "dip" else set()
+    skip = dt_syms | dip_syms
+    all_pos = {p["symbol"]: p for p in api.positions()
+               if p.get("asset_class", "us_equity") != "crypto" and p["symbol"] not in dt_syms}
+    all_orders = [o for o in api.open_orders()
+                  if o.get("asset_class", "us_equity") != "crypto" and o["symbol"] not in dt_syms]
+    pos = {k: v for k, v in all_pos.items() if k not in skip}
+    orders = [o for o in all_orders if o["symbol"] not in skip]
     flat = _legs(orders)
     tag = "🧪 SANAL" if getattr(api, "paper", True) else "💵 GERÇEK"
     today = summary["lastBar"]
@@ -301,7 +310,7 @@ def run(summary, by, mode, state, client=None):
 
     # 3) Girişler (yalnız seans içinde)
     def _lvl(sym, kind):
-        for o in flat:
+        for o in _legs(all_orders):
             if o["symbol"] == sym and o["side"] == "sell":
                 if kind == "stop" and o.get("type") in ("stop", "stop_limit") and o.get("stop_price"):
                     return float(o["stop_price"])
@@ -313,12 +322,21 @@ def run(summary, by, mode, state, client=None):
                  "cash": float(acct.get("cash", 0) or 0), "buyingPower": float(acct.get("buying_power", 0) or 0),
                  "paper": getattr(api, "paper", True),
                  "pendingBuys": [{"sym": o["symbol"], "qty": o.get("qty"), "limit": float(o.get("limit_price") or 0)}
-                                 for o in orders if o["side"] == "buy"],
+                                 for o in all_orders if o["side"] == "buy"],
                  "positions": [{"sym": k, "qty": v["qty"], "entry": float(v["avg_entry_price"]),
                                 "price": float(v["current_price"]), "pl": float(v["unrealized_pl"]),
                                 "plpc": float(v["unrealized_plpc"]) * 100,
                                 "value": float(v.get("market_value") or 0),
-                                "stop": _lvl(k, "stop"), "tp": _lvl(k, "tp")} for k, v in pos.items()]}
+                                "stop": _lvl(k, "stop"), "tp": _lvl(k, "tp"),
+                                "strategy": "3 gün düşüş" if k in dip_syms else "eski"} for k, v in all_pos.items()]}
+    if C.STRATEGY == "dip":
+        # Eski giriş kuralı kapalı: eldeki eski pozisyonlar kendi stoplarıyla kapanana kadar yönetilir
+        if mode in ("intraday", "post"):
+            cash = min(float(acct.get("cash", 0) or 0), bp) if C.NO_MARGIN else bp
+            msgs += dip.run(summary, by, mode, state, api, equity, cash, tag)
+        if mode == "post":
+            msgs += cancel_stale_entries(api, orders, tag)
+        return msgs, portfolio
     if mode == "post":
         msgs += cancel_stale_entries(api, orders, tag)
     if mode != "intraday":

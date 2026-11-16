@@ -130,6 +130,7 @@ def make_trader(api, now):
 
 
 def test_live():
+    C.STRATEGY = "eski"
     now = [DAY + pd.Timedelta(hours=9, minutes=50, seconds=20)]
     api = FakeApi()
     dt = make_trader(api, now)
@@ -228,6 +229,7 @@ def test_live():
 
 
 def test_sharia():
+    C.STRATEGY = "eski"
     f = {"sector": "Technology", "industry": "Software", "marketCap": 1e12, "totalDebt": 1e11, "totalCash": 5e10}
     assert sharia.check("X", f)["ok"]
     assert not sharia.check("X", dict(f, totalDebt=4e11))["ok"]
