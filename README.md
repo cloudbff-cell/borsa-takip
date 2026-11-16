@@ -69,6 +69,15 @@ cd site && python -m http.server       # http://localhost:8000
 - **Neden:** 2017-2026 testinde (`tools/down3_analiz.py`) kapanışta almak −%2 stopla kârsızdı. Sinyalden sonra fiyat ortalama %2,8 daha düşüyor ve dip çoğunlukla ertesi gün geliyor. %2 aşağıdan alınca −%2/+%2 kuralıyla yıllık +%21,9 (3 pozisyon), en büyük düşüş −%6; üç alt dönemin hepsinde kârlı. Günlük veride aynı gün hem stop hem hedef görülen işlemler stop sayıldı; hisse listesi bugünün büyükleri olduğu için sonuçlar biraz iyimser.
 - **Eski strateji:** puan + AL sinyali + iz süren stop kuralı yeni alım yapmaz. Eldeki eski pozisyonlar kendi stoplarıyla kapanana kadar korunur. Geri dönmek için `config.py` → `STRATEGY = "eski"`.
 
+## Bildirimler ve işlem günlüğü
+- **Telegram (`TELEGRAM_MODE = "rapor"`):** yalnız iki tür mesaj gelir: (1) bot limitli alış emri girerken anlık "📥 Emir giriyorum" mesajı (hisse, adet, limit, stop, kâr al, neden); (2) kapanıştan sonra tek **gün sonu raporu**: bugün alınanlar, kapananlar (neden ve K/Z), iptal edilen emirler, açık pozisyonlar ve her biri için ne beklendiği (kâr al / stop seviyesi ve uzaklığı, süre), bekleyen limitli alışlar, başlangıçtan beri getiri.
+- **Günlük (`kayitlar/`, bot her çalışmada depoya yazar; panelde tablo ve CSV indirme):**
+  - `sinyaller.csv`: her sinyal bir satır – sinyal anındaki koşullar (3 günlük düşüş, 200 gün ortalamasına uzaklık, RSI, ATR %, hacim oranı, puan, piyasa değeri, borç/nakit oranı, SPY trendi ve günlük değişimi, aynı gün kaç sinyal olduğu ve sırası) ve sonucu (emir verildi/atlandı/iptal, alış tarihi-saati-fiyatı, çıkış tarihi-saati-fiyatı, çıkış nedeni, K/Z $ ve %, tutma süresi, pozisyon süresince en yüksek ve en düşük %).
+  - `islemler.csv`: her olay bir satır – EMİR, ALIŞ, SATIŞ, İPTAL, SIFIRLAMA; tarih, saat (New York), adet, fiyat, tutar, neden.
+  - `baslangic.json`: başlangıç tarihi ve sermayesi.
+- **Sıfırlama:** `komutlar/sifirla.json` içine `[{"tarih": "YYYY-MM-DD"}]` yazılırsa o gün (New York) tüm pozisyonlar kapatılır, emirler iptal edilir, eski günlük `kayitlar/arsiv/` altına taşınır ve günlük sıfırdan başlar. Alpaca sanal hesabının bakiyesini sıfırlamak yalnız Alpaca panelinden yapılabilir.
+- Günlük işlem (day trading) iş akışının zamanlaması kapalı; elle çalıştırılabilir.
+
 ## Otomatik işlem botu – eski strateji (Alpaca, varsayılan: sanal para)
 - **Giriş:** Seans içindeki her taramada stratejik adaylar için alım bölgesinin üst sınırına limitli alış emri konur. Emre stop ve kâr al emirleri bağlıdır. Fiyat bölgeye indiğinde emri Alpaca anında gerçekleştirir.
 - **Güncelleme:** Aday listesinden çıkan ya da fiyatı alım bölgesinin altına düşen hissenin emri iptal edilir. Bölgesi %1'den fazla değişen hissenin emri yeni seviyeyle yeniden konur. Gün sonunda gerçekleşmemiş alış emirleri iptal edilir.

@@ -10,10 +10,12 @@ name: Günlük işlem (day trading)
 # ilki açılıştan önce başlar ve ~5,7 saat çalışır, ikincisi sıraya girer ve kapanışa kadar devam eder.
 # Saatler UTC (yaz/kış saati için betik New York saatine ve Alpaca takvimine bakar).
 on:
-  schedule:
-    - cron: "5 13 * * 1-5"
-    - cron: "5 14 * * 1-5"
-    - cron: "35 17 * * 1-5"
+  # Zamanlama kapalı (ana strateji gün aşırı; Telegram'a yalnız emir + gün sonu raporu gider).
+  # Yeniden açmak için şu satırları geri ekle:
+  # schedule:
+  #   - cron: "5 13 * * 1-5"
+  #   - cron: "5 14 * * 1-5"
+  #   - cron: "35 17 * * 1-5"
   workflow_dispatch:
     inputs:
       dry:

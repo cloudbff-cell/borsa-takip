@@ -19,7 +19,7 @@ on:
         required: false
 
 permissions:
-  contents: read
+  contents: write     # işlem günlüğü (kayitlar/) depoya yazılır
   pages: write
   id-token: write
 
@@ -71,6 +71,20 @@ jobs:
             python -m engine.run --mode "${{ inputs.mode }}" --force
           else
             python -m engine.run --mode auto
+          fi
+
+      - name: İşlem günlüğünü depoya yaz (kayitlar/)
+        if: always()
+        run: |
+          if [ -n "$(git status --porcelain kayitlar)" ]; then
+            git config user.name "borsa-bot"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add kayitlar
+            git commit -m "İşlem günlüğü güncellendi ($(date -u +%Y-%m-%dT%H:%MZ))"
+            for i in 1 2 3; do
+              git pull --rebase origin main && git push origin HEAD:main && break
+              sleep 5
+            done
           fi
 
       - name: Önbelleği kaydet

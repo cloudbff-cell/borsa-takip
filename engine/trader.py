@@ -24,6 +24,7 @@ from zoneinfo import ZoneInfo
 from . import config as C
 from . import data as D
 from . import dip
+from . import kayit
 
 STATUS = {}
 
@@ -148,8 +149,52 @@ class Alpaca:
     def cancel(self, order_id):
         return self._r("DELETE", f"/v2/orders/{order_id}")
 
+    def close_all(self):
+        """Tüm emirleri iptal et ve tüm pozisyonları kapat (piyasa kapalıysa açılışta gerçekleşir)."""
+        out = self._r("DELETE", "/v2/positions", params={"cancel_orders": "true"})
+        try:
+            self._r("DELETE", "/v2/orders")
+        except RuntimeError as e:
+            print(e)
+        return out
+
     def close_position(self, sym):
         return self._r("DELETE", f"/v2/positions/{sym}")
+
+
+def reset_command(api, state, equity):
+    """komutlar/sifirla.json: [{"tarih": "YYYY-MM-DD"}] – o gün (New York) tüm pozisyonları kapat, emirleri
+    iptal et ve işlem günlüğünü yeniden başlat. Bir kez uygulanır."""
+    p = Path("komutlar/sifirla.json")
+    if not p.exists() or not hasattr(api, "close_all"):
+        return None
+    try:
+        cmds = json.loads(p.read_text())
+    except ValueError:
+        return None
+    today = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+    key = f"reset|{today}"
+    if today not in {str(c.get("tarih")) for c in cmds} or key in state.get("done", {}):
+        return None
+    pos = [x for x in api.positions() if x.get("asset_class", "us_equity") != "crypto"]
+    n_orders = len(api.open_orders())
+    try:
+        api.close_all()
+    except RuntimeError as e:
+        return f"⚠️ Sıfırlama yapılamadı: {e}"
+    state.setdefault("done", {})[key] = today          # 10 günlük temizliğe takılmasın diye ayrı yerde
+    kayit.reset(equity)
+    for x in pos:
+        kayit.add_event(sembol=x["symbol"], islem="SIFIRLAMA", adet=x["qty"], fiyat=round(float(x["current_price"]), 2),
+                        neden="eski strateji pozisyonu, sıfırlama ile piyasa emriyle kapatıldı",
+                        strateji="eski", anahtar=f"reset-{today}-{x['symbol']}")
+    for k in ("dip", "trail", "held"):
+        state.pop(k, None)
+    state["startEquity"] = equity
+    tag = "🧪 SANAL" if getattr(api, "paper", True) else "💵 GERÇEK"
+    return (f"🔄 <b>Sıfırlama</b> ({tag}) – {len(pos)} eski pozisyon kapatılıyor"
+            + (f" ({', '.join(x['symbol'] for x in pos)})" if pos else "")
+            + f", {n_orders} açık emir iptal edildi. İşlem günlüğü yeniden başladı · başlangıç sermayesi ${equity:,.2f}")
 
 
 def daytrade_enabled():
@@ -250,6 +295,7 @@ def run(summary, by, mode, state, client=None):
         bp = min(bp, max(float(acct.get("cash", bp) or 0), 0.0))
         ensure_no_margin(api, state)
     day_pl = (equity - last_eq) / last_eq if last_eq else 0.0
+    reset_msg = reset_command(api, state, equity)
     # Kripto pozisyon/emirlerini kripto modülü, günlük işlem (dt-) pozisyonlarını daytrade modülü yönetir
     dt_syms = day_symbols(api)
     # Yeni ana strateji (dip.py) kendi 'dip-' pozisyonlarını yönetir; buradaki eski kurallar onlara dokunmaz
@@ -330,13 +376,19 @@ def run(summary, by, mode, state, client=None):
                                 "stop": _lvl(k, "stop"), "tp": _lvl(k, "tp"),
                                 "strategy": "3 gün düşüş" if k in dip_syms else "eski"} for k, v in all_pos.items()]}
     if C.STRATEGY == "dip":
-        # Eski giriş kuralı kapalı: eldeki eski pozisyonlar kendi stoplarıyla kapanana kadar yönetilir
-        if mode in ("intraday", "post"):
-            cash = min(float(acct.get("cash", 0) or 0), bp) if C.NO_MARGIN else bp
-            msgs += dip.run(summary, by, mode, state, api, equity, cash, tag)
+        # Eski giriş kuralı kapalı: eldeki eski pozisyonlar kendi stoplarıyla kapanana kadar yönetilir.
+        # Anlık bildirim yalnız emir girerken (ve sıfırlamada); diğer her şey gün sonu raporuna not olarak gider.
         if mode == "post":
             msgs += cancel_stale_entries(api, orders, tag)
-        return msgs, portfolio
+        alerts = [reset_msg] if reset_msg else []
+        if mode in ("intraday", "post") and not reset_msg:
+            cash = min(float(acct.get("cash", 0) or 0), bp) if C.NO_MARGIN else bp
+            a, _ = dip.run(summary, by, mode, state, api, equity, cash, tag)
+            alerts += a
+        if msgs:
+            state.setdefault("dip", {}).setdefault("notes", {}).setdefault(today, []).extend(
+                re.sub("<[^>]+>", "", m) for m in msgs)
+        return alerts, portfolio
     if mode == "post":
         msgs += cancel_stale_entries(api, orders, tag)
     if mode != "intraday":

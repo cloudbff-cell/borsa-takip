@@ -22,6 +22,7 @@ from . import crypto
 from . import sharia
 from . import daytrade
 from . import dip
+from . import kayit
 from .analysis import fundamental_view, revision_view, seasonality, volume_view
 from .indicators import add_indicators
 from .signals import SIGNALS, aggregate_stats, compute_signals, signal_events, technical_score, trade_levels
@@ -170,7 +171,7 @@ def build(mode: str, now_ny: datetime, prices=None, fund=None, monthly=None, ext
             "mcap": f.get("marketCap"), "isTop": t in top,
             "rank": top.index(t) + 1 if t in top else None,
             "leader": any(t in v for v in leaders.values()),
-            "price": r2(row["Close"]), "high": r2(row["High"]), "chg": r2((row["Close"] / prev_close - 1) * 100),
+            "price": r2(row["Close"]), "high": r2(row["High"]), "low": r2(row["Low"]), "chg": r2((row["Close"] / prev_close - 1) * 100),
             "trend": last["trend"], "rsi": r2(row["rsi"]), "atr": r2(row["atr"]),
             "ema20": r2(row["ema20"]), "ema50": r2(row["ema50"]), "ema200": r2(row["ema200"]),
             "hh20": r2(row["hh"]), "ll20": r2(row["ll"]), "res60": r2(row["res60"]), "sup60": r2(row["sup60"]),
@@ -377,11 +378,88 @@ def portfolio_message(p, state):
     return "\n".join(L)
 
 
+def daily_report(summary, portfolio, state):
+    """Gün sonu raporu: bugün alınan/kapanan/iptal, açık pozisyonlar ve ne beklendiği, bekleyen emirler."""
+    day = summary["lastBar"]
+    p = portfolio or {}
+    st = kayit.start_info()
+    ds = state.get("dip", {})
+    L = [f"📊 <b>Gün sonu raporu</b> – {day} ({'sanal para' if p.get('paper', True) else 'GERÇEK HESAP'})"]
+    if p:
+        L.append(f"Sermaye <b>${p['equity']:,.2f}</b> · bugün {p['dayPLusd']:+,.2f}$ ({p['dayPL']:+.2f}%) · nakit ${p['cash']:,.2f}")
+        if st.get("sermaye"):
+            L.append(f"Başlangıçtan beri ({st['tarih'][:10]}, ${st['sermaye']:,.0f}): "
+                     f"{(p['equity'] / st['sermaye'] - 1) * 100:+.2f}%")
+    else:
+        L.append("Alpaca'ya bağlanılamadı ya da otomatik işlem kapalı.")
+    ev = [e for e in kayit.events() if e.get("tarih") == day]
+    sig = {r["anahtar"]: r for r in kayit.signals()}
+    buys = [e for e in ev if e["islem"] == "ALIŞ"]
+    sells = [e for e in ev if e["islem"] in ("SATIŞ", "SIFIRLAMA")]
+    canc = [e for e in ev if e["islem"] == "İPTAL"]
+    orders = [e for e in ev if e["islem"] == "EMİR"]
+    L.append("\n✅ <b>Bugün alınanlar</b>")
+    L += [f"• {e['sembol']} {e['adet']} adet @ ${float(e['fiyat']):,.2f} ({e['saat']}) – {e['neden']}" for e in buys] or ["• yok"]
+    L.append("\n🔴 <b>Bugün kapananlar</b>")
+    if sells:
+        for e in sells:
+            r = next((r for r in sig.values() if r.get("sembol") == e["sembol"] and r.get("cikis_tarihi") == day), {})
+            pl = f" · {float(r['kar_zarar_usd']):+,.2f}$ ({float(r['kar_zarar_yuzde']):+.2f}%)" if r.get("kar_zarar_usd") else ""
+            ent = f"${float(r['alis_fiyati']):,.2f} → " if r.get("alis_fiyati") else ""
+            L.append(f"• {e['sembol']} {ent}${float(e['fiyat'] or 0):,.2f}{pl} – {e['neden']}"
+                     + (f" · {r['tutma_seans']} seans" if r.get("tutma_seans") else ""))
+    else:
+        L.append("• yok")
+    if canc:
+        L.append("⏹ İptal edilen alış emirleri: " + ", ".join(f"{e['sembol']} @ ${float(e['fiyat']):,.2f}" for e in canc))
+    L.append("\n📈 <b>Açık pozisyonlar ve beklenen</b>")
+    pos = p.get("positions") or []
+    if pos:
+        for x in pos:
+            h = (ds.get("held") or {}).get(x["sym"], {})
+            left = C.DIP_MAX_DAYS - h.get("sessions", 0) if h else None
+            wait = []
+            if x.get("tp"):
+                wait.append(f"kâr al ${x['tp']:,.2f} ({(x['tp'] / x['price'] - 1) * 100:+.1f}% uzakta)")
+            if x.get("stop"):
+                wait.append(f"stop ${x['stop']:,.2f} ({(x['stop'] / x['price'] - 1) * 100:+.1f}% uzakta)")
+            if left is not None:
+                wait.append(f"en geç {left} seans sonra süre dolunca satış")
+            L.append(f"• <b>{x['sym']}</b> {x['qty']} adet · ${x['entry']:,.2f} → ${x['price']:,.2f} · "
+                     f"{x['pl']:+,.2f}$ ({x['plpc']:+.2f}%)" + (f" · {h.get('sessions', 0)}. seans" if h else " · eski strateji")
+                     + ("\n   Bekleniyor: " + " ya da ".join(wait) if wait else ""))
+    else:
+        L.append("• açık pozisyon yok")
+    pend = ds.get("pending") or {}
+    if pend:
+        L.append("\n⏳ <b>Bekleyen limitli alışlar</b>")
+        for s, v in pend.items():
+            L.append(f"• {s} @ ${v.get('limit', 0):,.2f} · fiyat bu seviyeye inerse alınacak · "
+                     f"{C.DIP_ENTRY_SESSIONS - v.get('sessions', 0)} seans daha geçerli")
+    if orders:
+        L.append("\n📥 Bu akşam girilen emirler: " + ", ".join(f"{e['sembol']} @ ${float(e['fiyat']):,.2f}" for e in orders))
+    else:
+        L.append("\n📥 Bu akşam yeni sinyal yok; emir girilmedi.")
+    notes = [n for n in (ds.get("notes") or {}).get(day, []) if n.startswith(("⚠️", "🛡", "ℹ️", "🔔"))]
+    if notes:
+        L.append("\n📝 " + "\n📝 ".join(notes))
+    s = kayit.stats()
+    if s["n"]:
+        L.append(f"\n📒 Kapanan işlem {s['n']} · kazanma %{s['win']:.0f} · ort. {s['avg']:+.2f}% · toplam {s['pl']:+,.2f}$")
+    if PAGES_URL:
+        L.append(f"📊 Panel ve işlem günlüğü: {PAGES_URL}")
+    return "\n".join(L)
+
+
 def write_status(extra=None):
     st = {"time": datetime.now(TR).strftime("%Y-%m-%d %H:%M"), "telegram": telegram.STATUS}
     st.update(extra or {})
     (SITE / "data").mkdir(parents=True, exist_ok=True)
     (SITE / "data" / "status.json").write_text(json.dumps(st, ensure_ascii=False))
+    try:
+        kayit.publish(SITE)          # işlem günlüğü panelde tablo + CSV indirme
+    except Exception as e:  # noqa: BLE001
+        print("Günlük yayınlanamadı:", e)
     # GitHub Actions özetinde görünsün (gizli bilgi içermez)
     print("::notice title=Durum::" + json.dumps(st, ensure_ascii=False))
 
@@ -413,10 +491,11 @@ def main():
     state_tag = "" if detect_mode(now_ny) == mode else "|elle"
     state = D.load_state()
     summary, by = build(mode, now_ny, extra=state.get("held", []))
-    if a.ping:
+    if a.ping and C.TELEGRAM_MODE != "rapor":
         telegram.send(f"✅ <b>Borsa takip sistemi güncellendi</b>\n{len(summary['stocks'])} hisse izleniyor · "
                       f"{len(summary['picks'])} stratejik aday: {', '.join(summary['picks'][:10])}"
                       + (f"\n📊 Panel: {PAGES_URL}" if PAGES_URL else ""))
+    if a.ping:
         st = D.load_state()
         trade_step(summary, by, "check", st)   # bağlantı kontrolü + varsa kullanıcı satış komutları
         if C.CRYPTO_ENABLED:
@@ -428,14 +507,15 @@ def main():
     if mode in ("intraday", "post") and not summary["marketOpenToday"]:
         print("Bugün piyasa kapalı (tatil); bildirim yok.")
         return
+    rapor = C.TELEGRAM_MODE == "rapor"
     if mode == "pre":
         key = f"plan|{now_ny.date()}"
-        if key not in state["sent"]:
+        if key not in state["sent"] and not rapor:
             telegram.send(plan_message(summary, by))
             state["sent"][key] = str(now_ny.date())
     else:
         msgs = alerts(summary, by, mode, state, state_tag)
-        if msgs:
+        if msgs and not rapor:
             telegram.send(("✅ <b>Kapanışta teyitli sinyaller</b>\n\n" if mode == "post" else "⏱ <b>Seans içi yeni sinyaller</b>\n\n")
                           + "\n\n".join(msgs))
         portfolio = trade_step(summary, by, mode, state)
@@ -449,7 +529,10 @@ def main():
             key = f"close|{summary['lastBar']}{state_tag}"
             if key not in state["sent"]:
                 cl = (state.get("crypto", {}).get("lines") or []) if C.CRYPTO_ENABLED else []
-                telegram.send(close_message(summary, by) + portfolio_message(portfolio, state) + "\n".join(cl))
+                if rapor:
+                    telegram.send(daily_report(summary, portfolio, state))
+                else:
+                    telegram.send(close_message(summary, by) + portfolio_message(portfolio, state) + "\n".join(cl))
                 state["sent"][key] = summary["lastBar"]
     D.save_state(state)
     write_status({"mode": mode, "alpaca": trader.STATUS})
@@ -507,7 +590,7 @@ def trade_step(summary, by, mode, state, client=None):
         telegram.send(f"⚠️ Otomatik işlem modülü çalışamadı: {e}")
         return None
     if msgs:
-        telegram.send("🤖 <b>Bot işlemleri</b>\n\n" + "\n\n".join(msgs))
+        telegram.send("\n\n".join(msgs) if C.TELEGRAM_MODE == "rapor" else "🤖 <b>Bot işlemleri</b>\n\n" + "\n\n".join(msgs))
     if portfolio:
         p = D.CACHE / "trades.json"
         portfolio["log"] = json.loads(p.read_text())[-30:] if p.exists() else []

@@ -89,6 +89,13 @@ ul.notes{margin:4px 0;padding-left:18px;color:var(--ink2)}
     <div class="picks" id="picks"></div>
   </section>
 
+  <section class="card" id="kayit" hidden>
+    <h2>İşlem günlüğü</h2>
+    <p class="small" id="kayitMeta"></p>
+    <div class="scroll"><table id="kayitTbl"><thead><tr><th>Sinyal</th><th>Hisse</th><th>Durum</th><th class="r">Limit</th><th>Alış</th><th>Çıkış</th><th>Neden</th><th class="r">K/Z</th><th class="r">Seans</th><th class="r">En yüksek / düşük</th></tr></thead><tbody></tbody></table></div>
+    <p class="small"><a href="data/sinyaller.csv" download>Sinyaller (CSV)</a> · <a href="data/islemler.csv" download>Tüm işlemler (CSV)</a></p>
+  </section>
+
   <section class="card" id="sharia" hidden>
     <h2>İslami uygunluk filtresi</h2>
     <div id="shariaBody"></div>
@@ -129,6 +136,12 @@ fetch("data/crypto.json",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(k=
   $("#kripto").hidden=false;
   $("#kriptoBody").innerHTML=`<div class="scroll"><table><thead><tr><th>Coin</th><th class="r">Fiyat</th><th class="r">24s %</th><th>Trend</th><th class="r">RSI</th><th class="r">90g %</th><th class="r">Puan</th><th>Durum</th></tr></thead><tbody>${k.coins.map(c=>`<tr><td><b>${c.t.split("-")[0]}</b></td><td class="r num">$${fmt(c.price)}</td><td class="r num">${pct(c.chg)}</td><td>${c.trend}</td><td class="r num">${fmt(c.rsi,0)}</td><td class="r num">${pct(c.ret90)}</td><td class="r num"><b>${Math.round(c.score)}</b></td><td class="small" style="white-space:normal">${c.entry?`Aday (${c.entry=="sinyal"?"AL sinyali":"geri çekilme"}) · bölge $${fmt(c.plan.zoneLow)}–$${fmt(c.plan.zoneHigh)} · stop $${fmt(c.plan.stop)}`:(c.recent.length?c.recent.join(", "):"–")}</td></tr>`).join("")}</tbody></table></div>`+
   (k.positions&&k.positions.length?`<p class="small">Pozisyonlar: ${k.positions.map(p=>`${p.symbol} ${(+p.qty).toFixed(4)} · K/Z $${fmt(+p.unrealized_pl)}`).join(" · ")}</p>`:"");}).catch(()=>{});
+fetch("data/kayit.json",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(k=>{if(!k)return;$("#kayit").hidden=false;
+  const st=k.baslangic||{},rows=(k.sinyaller||[]).slice().reverse(),cl=rows.filter(r=>r.durum=="kapandı"&&r.kar_zarar_usd);
+  const tot=cl.reduce((a,r)=>a+(+r.kar_zarar_usd),0),win=cl.filter(r=>+r.kar_zarar_usd>0).length;
+  $("#kayitMeta").textContent=(st.tarih?`Başlangıç ${st.tarih} · sermaye $${fmt(st.sermaye)} · `:"")+`${rows.length} sinyal · ${cl.length} kapanan işlem`+(cl.length?` · kazanma %${Math.round(win/cl.length*100)} · toplam ${tot>=0?"+":""}${fmt(tot)}$`:"");
+  const f=v=>v?`$${fmt(+v)}`:"–";
+  $("#kayitTbl tbody").innerHTML=rows.length?rows.map(r=>`<tr><td class="num">${r.sinyal_tarihi||""}</td><td><b>${r.sembol}</b></td><td>${r.durum||""}</td><td class="r num">${f(r.limit)}</td><td class="num">${r.alis_tarihi?r.alis_tarihi+" "+f(r.alis_fiyati):"–"}</td><td class="num">${r.cikis_tarihi?r.cikis_tarihi+" "+f(r.cikis_fiyati):"–"}</td><td class="small">${r.cikis_nedeni||(r.dusus_3g_yuzde?"3 gün düşüş "+r.dusus_3g_yuzde+"%":"")}</td><td class="r num">${r.kar_zarar_yuzde?pct(+r.kar_zarar_yuzde):"–"}</td><td class="r num">${r.tutma_seans||"–"}</td><td class="r num">${r.en_yuksek_yuzde?(+r.en_yuksek_yuzde).toFixed(1)+" / "+(+r.en_dusuk_yuzde).toFixed(1):"–"}</td></tr>`).join(""):`<tr><td colspan="10" class="small">Henüz kayıt yok.</td></tr>`;}).catch(()=>{});
 fetch("data/summary.json",{cache:"no-store"}).then(r=>r.json()).then(d=>{S=d;d.stocks.forEach(s=>BY[s.t]=s);render();
   const h=location.hash.slice(1);if(h&&BY[h])openDetail(h);});
 
