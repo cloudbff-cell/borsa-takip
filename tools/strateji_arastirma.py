@@ -48,8 +48,8 @@ def load_intraday(symbols, months=12):
     for feed in ("sip", "iex"):
         try:
             out = {}
-            for i in range(0, len(symbols), 10):
-                raw = api.bars(symbols[i:i + 10], start=start.isoformat(), end=end.isoformat(), feed=feed,
+            for i in range(0, len(symbols), 5):
+                raw = api.bars(symbols[i:i + 5], start=start.isoformat(), end=end.isoformat(), feed=feed,
                                adjustment="split")
                 for s, rows in raw.items():
                     df = pd.DataFrame(rows)
@@ -60,6 +60,8 @@ def load_intraday(symbols, months=12):
                 return out
         except Exception as e:  # noqa: BLE001
             log(f"Alpaca {feed} verisi alınamadı: {str(e)[:200]}")
+            import time
+            time.sleep(60)
     from tools.daytrade_test import intraday
     log("Veri: Yahoo 5 dk, son 60 gün (Alpaca başarısız)")
     return intraday(symbols)

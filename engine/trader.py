@@ -74,7 +74,13 @@ class Alpaca:
                 p["end"] = end
             if token:
                 p["page_token"] = token
-            r = requests.get(DATA_URL + "/v2/stocks/bars", headers=self.h, params=p, timeout=30)
+            for wait in (0, 2, 5, 15, 30, 60):      # 429 (istek sınırı) gelirse bekleyip yeniden dene
+                if wait:
+                    import time
+                    time.sleep(wait)
+                r = requests.get(DATA_URL + "/v2/stocks/bars", headers=self.h, params=p, timeout=60)
+                if r.status_code != 429:
+                    break
             if not r.ok:
                 raise RuntimeError(f"Alpaca veri: {r.status_code} {r.text[:300]}")
             j = r.json()
