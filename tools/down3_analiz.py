@@ -200,6 +200,40 @@ def main():
                 f"{amb/len(trades)*100:.0f} | **{tot:+.1f}** | {dd:.1f} | "
                 + " | ".join("–" if s is None else f"{s:+.1f}" for s in sub) + " |")
         log("")
+    # Pozisyon sayısı duyarlılığı: seçilen yapı (kapanışın %2 altı limit, -%2 / +%2)
+    trades = []
+    for t, d in data.items():
+        sig, idx, busy = signals(d, "dn3"), d.index, -1
+        for i in np.flatnonzero(sig):
+            if i < 210 or i <= busy or i + 1 >= len(d):
+                continue
+            en = find_entry(d, i, "limit2")
+            if not en:
+                continue
+            j0, e, same = en
+            j, px, why, a = run_trade(d, j0, e, same, 0.02, 0.02, False)
+            trades.append({"in": idx[j0] + T_CLOSE, "out": idx[j] + T_CLOSE + pd.Timedelta(minutes=1),
+                           "ret": px * (1 - SLIP) / (e * (1 + SLIP)) - 1,
+                           "score": -(d["Close"].iloc[i] / d["Close"].iloc[i - 3] - 1), "why": why, "s": t})
+            busy = j
+    log("## Pozisyon sayısı (her biri sermayenin 1/N'i, kaldıraçsız) – limit %2 altı, -%2 / +%2")
+    log("| En fazla pozisyon | İşlem | Yıllık getiri % | Maks. düşüş % | Sermayenin ort. yatırımda olan kısmı % | "
+        + " | ".join(p[0] for p in PERIODS) + " |")
+    log("|" + "---|" * (5 + len(PERIODS)))
+    for n in (3, 5, 8, 10, 15, 20):
+        taken, eq = portfolio(trades, slots=n)
+        yrs = (eq.index[-1] - eq.index[0]).days / 365.25
+        tot = (eq.iloc[-1] ** (1 / yrs) - 1) * 100
+        dd = ((eq / eq.cummax()) - 1).min() * 100
+        bdays = pd.bdate_range(eq.index[0].normalize(), eq.index[-1].normalize())
+        held = np.zeros(len(bdays))
+        for x in taken:
+            a_, b_ = bdays.searchsorted(x["in"].normalize()), bdays.searchsorted(x["out"].normalize())
+            held[a_:b_] += 1
+        sub = [cagr(eq, a_, b_) for _, a_, b_ in PERIODS]
+        log(f"| {n} | {len(taken)} | **{tot:+.1f}** | {dd:.1f} | {np.mean(np.minimum(held, n))/n*100:.0f} | "
+            + " | ".join("–" if s_ is None else f"{s_:+.1f}" for s_ in sub) + " |")
+    log("")
     sp_ = spy.iloc[210:]
     yrs = (sp_.index[-1] - sp_.index[0]).days / 365.25
     log(f"SPY al-tut: yıllık {((sp_.iloc[-1]/sp_.iloc[0])**(1/yrs)-1)*100:+.1f}%")
