@@ -1,6 +1,6 @@
 # ABD Hisse Takip
 
-Piyasa değerine göre ilk 50 ABD şirketini ve her sektörün ilk 3 liderini her işlem günü otomatik izler:
+**İslami kurallara uygun** hisseler arasından piyasa değerine göre ilk 50 ABD şirketini ve her sektörün ilk 3 liderini her işlem günü otomatik izler; isteğe bağlı olarak swing (birkaç gün–hafta) ve **günlük (day trading)** otomatik işlem yapar:
 
 - **Teknik sinyaller:** trend (EMA 20/50/200), RSI, hacimli kırılım ve destek kırılımı. 8 kuralın tamamı `engine/signals.py` dosyasında ve Pine Script'te aynıdır.
 - **Stratejik alım adayları:** sinyal, trend gücü, SPY'a göre göreceli güç, bilanço ve mevsimsellik birleştirilerek 100 üzerinden bir puan çıkarılır. Her aday için alım bölgesi, stop ve iki hedef hesaplanır. Bilançoya 3 gün veya daha az kalan hisseler aday listesine alınmaz.
@@ -50,6 +50,7 @@ GitHub'ın zamanlanmış çalışmaları yoğunlukta 5–20 dakika gecikebilir. 
 ```bash
 pip install -r requirements.txt
 python tests/test_offline.py          # ağsız, sentetik veriyle
+python tests/test_daytrade.py         # günlük işlem + İslami filtre (sahte Alpaca)
 python -m engine.run --mode post --force --no-telegram   # gerçek veriyle, panel site/ klasörüne
 cd site && python -m http.server       # http://localhost:8000
 ```
@@ -65,6 +66,25 @@ cd site && python -m http.server       # http://localhost:8000
 - **Çıkış:** Stop ya da kâr al emri tetiklenince pozisyon kapanır. Kapanışta teyit edilen bir SAT sinyali gelirse ya da bilançoya 1 gün kalırsa da satılır. Fiyat ilk hedefe ulaşınca stop giriş fiyatına çekilir.
 - **Risk:** İşlem başına sermayenin %1'i riske girer. Aynı anda en fazla 5 pozisyon açılır ve tek pozisyon sermayenin en fazla %20'si olur. Günlük kayıp %2'yi aşarsa o gün yeni alım yapılmaz.
 - **Açma/kapama:** Actions Variables altındaki `TRADING_ENABLED` değeri `true` ise bot çalışır, `false` ise durur. Gerçek hesaba geçmek için `ALPACA_PAPER` değişkenini `false` yapmak ve gerçek hesabın API anahtarlarını girmek gerekir.
+
+## İslami uygunluk filtresi (`engine/sharia.py`)
+S&P 500 Shariah / SPUS yöntemine yakın iki katmanlı tarama; ilk 50, sektör liderleri, alım adayları ve her iki bot yalnız uygun hisselerden seçer:
+- **Faaliyet:** konvansiyonel finans (banka, sigorta, Visa/Mastercard gibi kart ağları, aracı kurum, borsa), alkol, tütün, kumar, otel-kumarhane, domuz ürünleri (ör. MCD), film/TV/müzik (ör. NFLX, DIS), sağlık sigortası (ör. UNH) ve savunma sanayi elenir.
+- **Oranlar:** toplam borç / 36 aylık ortalama piyasa değeri < %30 ve (nakit + faizli yatırım) / 36 aylık ortalama piyasa değeri < %30 (`SHARIA_DEBT_MAX`, `SHARIA_CASH_MAX`).
+- **İşlem şekli:** kaldıraç (margin) ve açığa satış yok. Alımlar yalnız nakitle yapılır; bot Alpaca hesabını her gün `no_shorting=true`, `max_margin_multiplier=1` olarak ayarlamaya çalışır.
+- Elde tutulan hisse uygunluğunu kaybederse kapanışta satılır (veri eksikliğinden kaynaklanan durumlarda satılmaz).
+- Elenenler ve nedenleri panelde ve sabah planında görünür. Yahoo verisi resmî değildir ve bu bir fetva değildir; kesin karar için Zoya/Musaffa gibi bir tarayıcıyla teyit et. Elle düzeltme: `config.py` → `SHARIA_EXCLUDE` / `SHARIA_ALLOW`. Temettülerde arındırma (purification) gerekiyorsa bot bunu hesaplamaz.
+
+## Günlük işlem / day trading (`engine/daytrade.py`, iş akışı: **Günlük işlem**)
+- **Strateji:** açılış aralığı kırılımı (ORB). İlk 15 dakikanın zirvesi, 09:45–11:30 (New York) arasında 5 dakikalık mum kapanışıyla yukarı kırılırsa alınır. Şartlar: fiyat VWAP üstünde, açılış aralığı hacmi son 10 günün ≥ 1,5 katı, günlük trend yukarı, açılış boşluğu < %4, bugün bilanço yok, SPY de VWAP üstünde. Yalnız alış.
+- **Emir:** limitli alış + bağlı stop ve kâr al (bracket, yalnız o gün geçerli). Stop = max(aralık dibi, giriş − 0,35 günlük ATR), kâr al = 2R, +1R'de stop girişe çekilir. 3 dakikada dolmayan emir iptal edilir.
+- **Gün sonu:** 15:50'de (erken kapanış günlerinde kapanıştan 10 dk önce) tüm günlük pozisyonlar kapatılır; gece pozisyon taşınmaz. Tarama iş akışı 15:52'den sonra açık kalan günlük pozisyon görürse yedek olarak kapatır.
+- **Risk:** sermayenin %30'u günlük işleme ayrılır (`DAYTRADE_ALLOC`; swing bot kalan %70 ile çalışır). İşlem başına bu payın %1'i risk, en fazla 3 açık pozisyon, günde 4 giriş, günlük-işlem kaybı %3'ü aşarsa yeni giriş yok.
+- **Ayrım:** günlük emirlerin kimliği `dt-` ile başlar; swing bot bu hisselere dokunmaz, günlük bot da swing botun elindeki hisselere girmez.
+- **Çalışma:** iş akışı seans boyunca açık kalır (her gün iki tetikleme; GitHub'da tek iş en fazla 6 saat). Veri: Alpaca piyasa verisi (ücretsiz IEX akışı; ücretli SIP için `ALPACA_DATA_FEED=sip`). Telegram'a her giriş/çıkış ve gün sonu özeti gelir.
+- **Açma/kapama:** Actions Variables → `DAYTRADE_ENABLED` = `true`/`false` (tanımlı değilse açık kabul edilir; `TRADING_ENABLED=true` da gerekir). Emir vermeden denemek için: Actions → Günlük işlem → Run workflow → dry = true.
+- **Geri test:** Actions → *Günlük işlem geri testi* son ~60 işlem gününün 5 dakikalık verisiyle kuralları ve birkaç ayar varyasyonunu test eder (sonuç iş özetinde).
+- Not: ABD'de 4 Haziran 2026'dan itibaren "pattern day trader" kuralı ve 25.000 $ alt sınırı kaldırıldı; yine de aracı kurumun kendi kuralları geçerlidir.
 
 ## Kripto bölümü (BTC, ETH)
 - Sermayenin %10'u; işlem başına sermayenin %0,5'i risk, coin başına en fazla %5. Hisse bölümü kalan %90 ile hesaplanır.

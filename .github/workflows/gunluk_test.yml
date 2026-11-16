@@ -1,0 +1,30 @@
+name: Günlük işlem geri testi (analiz)
+
+# Tek seferlik analiz: son ~60 işlem gününde ORB kurallarını İslami filtreli evrende test eder.
+# İşlem yapmaz, secret kullanmaz. Sonuç Actions özetinde.
+on:
+  push:
+    branches: [main]
+    paths: ["tools/daytrade_test.py", "engine/daytrade.py", "engine/sharia.py"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  geri_test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/cache/restore@v4
+        with:
+          path: cache
+          key: tarama-geritest-${{ github.run_id }}
+          restore-keys: tarama-
+      - run: python -u tools/daytrade_test.py

@@ -19,6 +19,8 @@ from . import data as D
 from . import telegram
 from . import trader
 from . import crypto
+from . import sharia
+from . import daytrade
 from .analysis import fundamental_view, revision_view, seasonality, volume_view
 from .indicators import add_indicators
 from .signals import SIGNALS, aggregate_stats, compute_signals, signal_events, technical_score, trade_levels
@@ -51,8 +53,10 @@ def r2(x):
     return None if x is None or (isinstance(x, float) and np.isnan(x)) else round(float(x), 2)
 
 
-def pick_universe(fund: dict, available: set):
-    rows = [(t, f.get("marketCap") or 0, f.get("sector") or "Diğer") for t, f in fund.items() if t in available]
+def pick_universe(fund: dict, available: set, sh: dict = None):
+    """sh: sharia.screen çıktısı; verilirse yalnız uygun hisseler sıralamaya girer."""
+    rows = [(t, f.get("marketCap") or 0, f.get("sector") or "Diğer") for t, f in fund.items()
+            if t in available and (sh is None or sh.get(t, {}).get("ok"))]
     rows.sort(key=lambda r: -r[1])
     top = [r[0] for r in rows[: C.TOP_N]]
     leaders = {}
@@ -107,7 +111,8 @@ def build(mode: str, now_ny: datetime, prices=None, fund=None, monthly=None, ext
     if fund is None:
         fund = D.fundamentals([t for t in cands if t in prices], force=(mode == "pre"))
     bench = prices.get(C.BENCHMARK)
-    top, leaders, tracked = pick_universe(fund, set(prices))
+    sh = sharia.screen(fund, prices)
+    top, leaders, tracked = pick_universe(fund, set(prices), sh)
     # Elde tutulan pozisyonlar listeden düşse bile izlenmeye devam etsin (iz süren stop için)
     tracked += [t for t in (extra or []) if t in prices and t not in tracked]
 
@@ -176,6 +181,7 @@ def build(mode: str, now_ny: datetime, prices=None, fund=None, monthly=None, ext
             "recent": [{"d": e["date"].strftime("%Y-%m-%d"), "code": e["code"], "side": SIGNALS[e["code"]][0],
                         "name": SIGNALS[e["code"]][1]} for e in recent],
             "fund": fv, "season": sea,
+            "sharia": sh.get(t) or {"ok": False, "reason": "veri yok", "hard": False},
         })
         (SITE / "data" / "c" / f"{t}.json").write_text(json.dumps(chart_payload(df, sig, evs), separators=(",", ":")))
 
@@ -188,6 +194,8 @@ def build(mode: str, now_ny: datetime, prices=None, fund=None, monthly=None, ext
         recent_buy = any(r["side"] == "AL" for r in s["recent"])
         recent_sell = any(r["side"] == "SAT" for r in s["recent"])
         er = s["fund"]["daysToEarnings"]
+        if not s["sharia"]["ok"]:
+            return None
         if recent_sell or (s["rsi"] or 0) >= 75 or (er is not None and 0 <= er <= C.EARNINGS_GUARD_DAYS):
             return None
         if recent_buy and s["score"] >= C.ENTRY_SIGNAL_MIN_SCORE:
@@ -219,6 +227,11 @@ def build(mode: str, now_ny: datetime, prices=None, fund=None, monthly=None, ext
         "picks": [s["t"] for s in picks], "warnings": [s["t"] for s in warnings],
         "seasonal": [s["t"] for s in seasonal], "seasonalNext": [s["t"] for s in seasonal_next],
         "earnings": [s["t"] for s in earn], "stats": stats, "signalDefs": SIGNALS,
+        "sharia": {"enabled": C.SHARIA_FILTER, "debtMax": C.SHARIA_DEBT_MAX, "cashMax": C.SHARIA_CASH_MAX,
+                   "passed": sum(1 for r in sh.values() if r["ok"]),
+                   "excluded": sorted([{"t": t, "name": fund[t].get("shortName") or t, "reason": r["reason"],
+                                        "mcap": fund[t].get("marketCap")} for t, r in sh.items() if not r["ok"]],
+                                      key=lambda x: -(x["mcap"] or 0))},
         "stocks": stocks,
     }
     (SITE / "data" / "summary.json").write_text(json.dumps(summary, default=str, separators=(",", ":")))
@@ -266,7 +279,13 @@ def alerts(summary, by, mode, state, tag=""):
 def plan_message(summary, by):
     b = summary["benchmark"]
     L = [f"☀️ <b>Gün Planı</b> – {summary['generated']} (TR)",
-         f"S&P 500 (SPY) ${b['price']} · Trend: {b['trend']}", ""]
+         f"S&P 500 (SPY) ${b['price']} · Trend: {b['trend']}"]
+    shs = summary.get("sharia") or {}
+    if shs.get("enabled"):
+        ex = shs["excluded"]
+        L.append(f"☪️ İslami filtre: {shs['passed']} hisse uygun, ilk {C.TOP_N} bunlardan seçildi · "
+                 f"{len(ex)} elendi (ör. " + ", ".join(f"{x['t']}: {x['reason']}" for x in ex[:5]) + ")")
+    L.append("")
     if summary["earnings"]:
         L.append("📅 <b>Yaklaşan bilançolar (14 gün)</b>")
         for t in summary["earnings"][:12]:
@@ -409,6 +428,12 @@ def main():
             telegram.send(("✅ <b>Kapanışta teyitli sinyaller</b>\n\n" if mode == "post" else "⏱ <b>Seans içi yeni sinyaller</b>\n\n")
                           + "\n\n".join(msgs))
         portfolio = trade_step(summary, by, mode, state)
+        try:      # günlük işlem yedeği: kapanışa yakın açık kalmış günlük pozisyonları kapat
+            dmsg = daytrade.safety_flatten(now_ny)
+            if dmsg:
+                telegram.send("\n".join(dmsg))
+        except Exception as e:  # noqa: BLE001
+            print("Günlük işlem yedek kontrolü hatası:", e)
         if mode == "post":
             key = f"close|{summary['lastBar']}{state_tag}"
             if key not in state["sent"]:

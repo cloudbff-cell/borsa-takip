@@ -59,7 +59,8 @@ def _fetch_fundamentals(t: str) -> dict:
     for k in ["shortName", "sector", "industry", "marketCap", "trailingPE", "forwardPE", "pegRatio",
               "revenueGrowth", "earningsGrowth", "profitMargins", "returnOnEquity", "debtToEquity",
               "freeCashflow", "targetMeanPrice", "targetHighPrice", "targetLowPrice",
-              "recommendationMean", "recommendationKey", "numberOfAnalystOpinions", "currentPrice"]:
+              "recommendationMean", "recommendationKey", "numberOfAnalystOpinions", "currentPrice",
+              "totalDebt", "totalCash"]:
         d[k] = _clean(info.get(k))
     if not d.get("marketCap"):
         try:
@@ -124,7 +125,8 @@ def fundamentals(tickers, force=False) -> dict:
     now = time.time()
     for t in tickers:
         c = cache.get(t)
-        if not force and c and now - c.get("_ts", 0) < C.FUNDAMENTALS_TTL_HOURS * 3600:
+        # İslami filtre için borç/nakit alanı olmayan eski önbellek kayıtları yenilenir
+        if not force and c and "totalDebt" in c and now - c.get("_ts", 0) < C.FUNDAMENTALS_TTL_HOURS * 3600:
             continue
         try:
             f = _fetch_fundamentals(t)

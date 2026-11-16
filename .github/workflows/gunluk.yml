@@ -1,0 +1,80 @@
+name: Günlük işlem (day trading)
+
+# Seans boyunca çalışan döngü: açılış aralığı kırılımı (ORB), yalnız alış, kaldıraçsız,
+# tüm pozisyonlar kapanıştan önce kapatılır. Evren: İslami filtreden geçen ilk 50 hisse.
+# Açma/kapama: Settings > Secrets and variables > Actions > Variables > DAYTRADE_ENABLED (true/false).
+# TRADING_ENABLED da true olmalıdır. ALPACA_PAPER=false yapılmadıkça sanal para kullanılır.
+#
+# GitHub'da bir iş en fazla 6 saat sürebilir; seans 6,5 saat. Bu yüzden her gün iki tetikleme var:
+# ilki açılıştan önce başlar ve ~5,7 saat çalışır, ikincisi sıraya girer ve kapanışa kadar devam eder.
+# Saatler UTC (yaz/kış saati için betik New York saatine ve Alpaca takvimine bakar).
+on:
+  schedule:
+    - cron: "5 13 * * 1-5"
+    - cron: "5 14 * * 1-5"
+    - cron: "35 17 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      dry:
+        description: "Emir verme, yalnız sinyalleri yazdır (true/false)"
+        default: "false"
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gunluk-islem
+  cancel-in-progress: false
+
+jobs:
+  daytrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Tarama önbelleğini al (temel veriler – yalnız okunur)
+        uses: actions/cache/restore@v4
+        with:
+          path: cache
+          key: tarama-gunluk-${{ github.run_id }}
+          restore-keys: tarama-
+
+      - name: Günlük işlem durumunu geri yükle
+        uses: actions/cache/restore@v4
+        with:
+          path: cache_dt
+          key: gunluk-${{ github.run_id }}
+          restore-keys: gunluk-
+
+      - name: Günlük işlem döngüsü
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ALPACA_KEY_ID: ${{ secrets.ALPACA_KEY_ID }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          TRADING_ENABLED: ${{ vars.TRADING_ENABLED }}
+          DAYTRADE_ENABLED: ${{ vars.DAYTRADE_ENABLED || 'true' }}
+          ALPACA_PAPER: ${{ vars.ALPACA_PAPER || 'true' }}
+          ALPACA_DATA_FEED: ${{ vars.ALPACA_DATA_FEED || 'iex' }}
+        run: |
+          if [ "${{ inputs.dry }}" = "true" ]; then
+            python -u -m engine.daytrade --dry --max-minutes 340
+          else
+            python -u -m engine.daytrade --max-minutes 340
+          fi
+
+      - name: Günlük işlem durumunu kaydet
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: cache_dt
+          key: gunluk-${{ github.run_id }}

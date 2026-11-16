@@ -52,6 +52,7 @@ def main():
     # temel veriyi test_offline ile aynı şekilde üret
     rng = np.random.default_rng(1)
     fund = {t: {"shortName": t, "sector": TO.SECTORS[i % len(TO.SECTORS)], "marketCap": float(rng.lognormal(26, 1)),
+                "industry": "Software", "totalDebt": 0.0, "totalCash": 0.0,
                 "earningsHistory": []} for i, t in enumerate(C.CANDIDATES)}
     C.ENTRY_SIGNAL_MIN_SCORE, C.ENTRY_TREND_MIN_SCORE = 30, 50   # sentetik veride yeterli aday olsun
     now = datetime.now(run.NY).replace(hour=11)

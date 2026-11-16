@@ -39,7 +39,9 @@ def main():
         p = float(prices[t]["Close"].iloc[-1])
         ed = date.today() + timedelta(days=int(rng.integers(-20, 60)))
         fund[t] = {"ticker": t, "shortName": f"{t} Inc.", "sector": SECTORS[i % len(SECTORS)],
-                   "marketCap": float(rng.lognormal(26, 1)), "trailingPE": 30.0, "forwardPE": 25.0,
+                   "marketCap": (mc := float(rng.lognormal(26, 1))), "industry": "Software",
+                   "totalDebt": mc * float(rng.uniform(0, 0.45)), "totalCash": mc * 0.05,
+                   "trailingPE": 30.0, "forwardPE": 25.0,
                    "revenueGrowth": float(rng.normal(.1, .1)), "earningsGrowth": float(rng.normal(.12, .15)),
                    "profitMargins": .22, "targetMeanPrice": p * float(rng.normal(1.1, .1)),
                    "numberOfAnalystOpinions": 30, "recommendationKey": "buy", "recommendationMean": 1.9,
@@ -52,6 +54,13 @@ def main():
     now = datetime.now(run.NY).replace(hour=16, minute=30)
     summary, by = run.build("post", now, prices=prices, fund=fund, monthly=monthly)
     assert len(summary["top"]) == C.TOP_N
+    # İslami filtre: ilk 50'nin tamamı uygun; finans sektörü ve yüksek borçlular elenmiş
+    assert all(by[t]["sharia"]["ok"] for t in summary["top"]), "uygun olmayan hisse ilk 50'de"
+    assert not [t for t in summary["top"] if fund[t]["sector"] == "Financial Services"]
+    assert all(by[t]["sharia"]["ok"] for t in summary["picks"])
+    ex = {x["t"]: x["reason"] for x in summary["sharia"]["excluded"]}
+    assert any("borç" in r for r in ex.values()) and any("finans" in r for r in ex.values()), ex
+    print("İslami filtre:", summary["sharia"]["passed"], "uygun,", len(ex), "elendi")
     print("İzlenen:", len(summary["stocks"]), "| Adaylar:", summary["picks"])
     print("Sinyal istatistikleri:", summary["stats"])
     state = {"sent": {}}

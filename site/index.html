@@ -89,6 +89,11 @@ ul.notes{margin:4px 0;padding-left:18px;color:var(--ink2)}
     <div class="picks" id="picks"></div>
   </section>
 
+  <section class="card" id="sharia" hidden>
+    <h2>İslami uygunluk filtresi</h2>
+    <div id="shariaBody"></div>
+  </section>
+
   <div class="grid2">
     <section class="card"><h2>Bugünün sinyalleri</h2><div id="today"></div></section>
     <section class="card"><h2>Yaklaşan bilançolar (14 gün)</h2><div id="earn"></div></section>
@@ -137,6 +142,11 @@ function render(){
     $("#pfBody").innerHTML=`<p class="num">Sermaye <b>$${fmt(P.equity)}</b> · Bugün ${pct(P.dayPL)} · ${P.positions.length} açık pozisyon</p>`+
     (P.positions.length?`<div class="scroll"><table><thead><tr><th>Hisse</th><th class="r">Adet</th><th class="r">Giriş</th><th class="r">Fiyat</th><th class="r">K/Z</th></tr></thead><tbody>${P.positions.map(x=>`<tr data-t="${x.sym}"><td><b>${x.sym}</b></td><td class="r num">${x.qty}</td><td class="r num">$${fmt(x.entry)}</td><td class="r num">$${fmt(x.price)}</td><td class="r num">$${fmt(x.pl)} (${pct(x.plpc)})</td></tr>`).join("")}</tbody></table></div>`:"")+
     (P.log&&P.log.length?`<h3>Son bot işlemleri</h3><p class="small">${P.log.slice(-10).reverse().map(l=>`${l.ts} · <b>${l.sym}</b> ${({buy_limit:"limitli alış",buy:"alış",sell:"satış",cancel:"emir iptal",reprice:"emir güncellendi",stop_to_be:"stop başa baş"})[l.side]||l.side}${l.limit?` @ $${fmt(l.limit)}`:""}${l.reason?` (${l.reason})`:""}`).join("<br>")}</p>`:"");}
+  // İslami filtre
+  if(S.sharia&&S.sharia.enabled){const H=S.sharia;$("#sharia").hidden=false;
+    $("#shariaBody").innerHTML=`<p class="small">İlk 50 ve tüm alım adayları yalnız uygun hisselerden seçilir. Faaliyet taraması (konvansiyonel finans, alkol, tütün, kumar, domuz ürünleri, film/TV/müzik, savunma) + borç ve nakit/faizli yatırım, 36 aylık ortalama piyasa değerinin %${Math.round(H.debtMax*100)} altında olmalı. Bot kaldıraç ve açığa satış kullanmaz. Veriler Yahoo Finance'ten; fetva değildir.</p>
+    <p class="num"><b>${H.passed}</b> hisse uygun · <b>${H.excluded.length}</b> hisse elendi</p>
+    <details><summary>Elenenler ve nedenleri</summary><p class="small">${H.excluded.map(x=>`<b>${x.t}</b> ${x.reason}`).join(" · ")}</p></details>`;}
   // Adaylar
   $("#picks").innerHTML=S.picks.length?S.picks.map(t=>{const s=BY[t],p=s.plan;return `<div class="pick" tabindex="0" data-t="${t}">
     <div><b>${t}</b> <span class="small">${s.name}</span></div>

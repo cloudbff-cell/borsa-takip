@@ -28,6 +28,7 @@ STATUS = {}
 
 PAPER_URL = "https://paper-api.alpaca.markets"
 LIVE_URL = "https://api.alpaca.markets"
+DATA_URL = "https://data.alpaca.markets"
 
 
 class Alpaca:
@@ -45,6 +46,50 @@ class Alpaca:
 
     def account(self):
         return self._r("GET", "/v2/account")
+
+    def clock(self):
+        return self._r("GET", "/v2/clock")
+
+    def calendar(self, start, end):
+        return self._r("GET", "/v2/calendar", params={"start": start, "end": end})
+
+    def orders(self, status="all", after=None, limit=500):
+        p = {"status": status, "nested": "false", "limit": limit, "direction": "desc"}
+        if after:
+            p["after"] = after
+        return self._r("GET", "/v2/orders", params=p)
+
+    def configure(self, **cfg):
+        """Hesap ayarı (ör. no_shorting=True, max_margin_multiplier="1")."""
+        return self._r("PATCH", "/v2/account/configurations", json=cfg)
+
+    def bars(self, symbols, start, end=None, timeframe="5Min", feed=None):
+        """Alpaca piyasa verisi: {sembol: [{t,o,h,l,c,v,vw}, ...]} (sayfalama dahil)."""
+        feed = feed or os.getenv("ALPACA_DATA_FEED", "iex")
+        out, token = {}, None
+        while True:
+            p = {"symbols": ",".join(symbols), "timeframe": timeframe, "start": start, "limit": 10000,
+                 "feed": feed, "adjustment": "raw"}
+            if end:
+                p["end"] = end
+            if token:
+                p["page_token"] = token
+            r = requests.get(DATA_URL + "/v2/stocks/bars", headers=self.h, params=p, timeout=30)
+            if not r.ok:
+                raise RuntimeError(f"Alpaca veri: {r.status_code} {r.text[:300]}")
+            j = r.json()
+            for sym, rows in (j.get("bars") or {}).items():
+                out.setdefault(sym, []).extend(rows)
+            token = j.get("next_page_token")
+            if not token:
+                return out
+
+    def day_buy(self, sym, qty, limit, stop, tp, client_id):
+        """Günlük işlem: limitli alış + bağlı stop ve kâr al (bracket), yalnız bugün geçerli (day)."""
+        return self._r("POST", "/v2/orders", json={
+            "symbol": sym, "qty": str(qty), "side": "buy", "type": "limit", "limit_price": f"{limit:.2f}",
+            "time_in_force": "day", "order_class": "bracket", "client_order_id": client_id,
+            "take_profit": {"limit_price": f"{tp:.2f}"}, "stop_loss": {"stop_price": f"{stop:.2f}"}})
 
     def positions(self):
         return self._r("GET", "/v2/positions")
@@ -95,6 +140,40 @@ class Alpaca:
 
     def close_position(self, sym):
         return self._r("DELETE", f"/v2/positions/{sym}")
+
+
+def daytrade_enabled():
+    return os.getenv("DAYTRADE_ENABLED", "").lower() == "true"
+
+
+def ny_midnight_iso():
+    n = datetime.now(ZoneInfo("America/New_York"))
+    return n.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+
+def day_symbols(api):
+    """Bugün günlük işlem modülünün (client_order_id 'dt-') işlem yaptığı semboller."""
+    if not hasattr(api, "orders"):
+        return set()
+    try:
+        return {o["symbol"] for o in api.orders("all", after=ny_midnight_iso())
+                if str(o.get("client_order_id", "")).startswith("dt-")}
+    except RuntimeError as e:
+        print("Günlük işlem emirleri okunamadı:", e)
+        return set()
+
+
+def ensure_no_margin(api, state):
+    """Hesabı açığa satışsız ve kaldıraçsız ayarla (günde bir deneme; hata işlemi durdurmaz)."""
+    key = f"nomargin|{datetime.utcnow():%Y-%m-%d}"
+    if key in state.get("sent", {}) or not hasattr(api, "configure"):
+        return
+    state.setdefault("sent", {})[key] = f"{datetime.utcnow():%Y-%m-%d}"
+    try:
+        cfg = api.configure(no_shorting=True, max_margin_multiplier="1")
+        STATUS["accountConfig"] = {k: cfg.get(k) for k in ("no_shorting", "max_margin_multiplier")}
+    except RuntimeError as e:
+        STATUS["accountConfig"] = f"ayarlanamadı: {str(e)[:150]}"
 
 
 def _legs(orders):
@@ -157,15 +236,23 @@ def run(summary, by, mode, state, client=None):
     STATUS.update({"result": "bağlandı", "paper": getattr(api, "paper", True), "accountStatus": acct.get("status")})
     equity, last_eq = float(acct["equity"]), float(acct["last_equity"])
     bp = float(acct.get("buying_power", equity))
+    if C.NO_MARGIN:   # faizli kredi (margin) kullanılmaz: alım gücü en fazla nakit kadar
+        bp = min(bp, max(float(acct.get("cash", bp) or 0), 0.0))
+        ensure_no_margin(api, state)
     day_pl = (equity - last_eq) / last_eq if last_eq else 0.0
-    # Kripto pozisyon/emirleri kripto modülü yönetir; burada yalnız hisseler
-    pos = {p["symbol"]: p for p in api.positions() if p.get("asset_class", "us_equity") != "crypto"}
-    orders = [o for o in api.open_orders() if o.get("asset_class", "us_equity") != "crypto"]
+    # Kripto pozisyon/emirlerini kripto modülü, günlük işlem (dt-) pozisyonlarını daytrade modülü yönetir
+    dt_syms = day_symbols(api)
+    pos = {p["symbol"]: p for p in api.positions()
+           if p.get("asset_class", "us_equity") != "crypto" and p["symbol"] not in dt_syms}
+    orders = [o for o in api.open_orders()
+              if o.get("asset_class", "us_equity") != "crypto" and o["symbol"] not in dt_syms]
     flat = _legs(orders)
     tag = "🧪 SANAL" if getattr(api, "paper", True) else "💵 GERÇEK"
     today = summary["lastBar"]
     if getattr(C, "CRYPTO_ENABLED", False):
         equity *= (1 - C.CRYPTO_ALLOC)        # hisse bölümü sermayenin %90'ı
+    if daytrade_enabled():
+        equity *= (1 - C.DAYTRADE_ALLOC)      # günlük işleme ayrılan pay swing bota dahil edilmez
 
     # 1) Çıkışlar: kapanışta teyitli SAT sinyali veya bilanço öncesi (post modunda; emir ertesi açılışta gerçekleşir)
     m_msgs, closed = manual_sells(api, pos, flat, by, state, tag)
@@ -177,6 +264,9 @@ def run(summary, by, mode, state, client=None):
                 continue
             reason = next((g["name"] for g in s["signals"] if g["code"] in C.EXIT_SIGNALS), None)
             d2e = s["fund"]["daysToEarnings"]
+            shr = s.get("sharia") or {}
+            if not reason and C.SHARIA_FILTER and C.SHARIA_SELL_IF_FAILS and not shr.get("ok", True) and shr.get("hard"):
+                reason = f"İslami filtreden çıktı ({shr.get('reason')})"
             if not reason and C.EXIT_BEFORE_EARNINGS and d2e is not None and 0 <= d2e <= 1:
                 reason = f"Bilanço {s['fund']['nextEarnings']} öncesi"
             if not reason:
@@ -235,7 +325,7 @@ def run(summary, by, mode, state, client=None):
             msgs += cancel_stale_entries(api, orders, tag)
         return msgs, portfolio
 
-    return msgs + _manage_entries(api, summary, by, state, pos, orders, equity, bp, tag, today), portfolio
+    return msgs + _manage_entries(api, summary, by, state, pos, orders, equity, bp, tag, today, dt_syms), portfolio
 
 
 def _num(q):
@@ -404,7 +494,7 @@ def _size(equity, bp, limit, stop):
     return max(qty, 0), risk_ps
 
 
-def _manage_entries(api, summary, by, state, pos, orders, equity, bp, tag, today):
+def _manage_entries(api, summary, by, state, pos, orders, equity, bp, tag, today, dt_syms=()):
     msgs = []
     entries = _bot_entries(orders)
     picks = summary["picks"]
@@ -447,7 +537,7 @@ def _manage_entries(api, summary, by, state, pos, orders, equity, bp, tag, today
         key = f"entry|{today}|{t}"
         if state.get("blocked", {}).get(t) == datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d"):
             continue
-        if not pl or t in pos or t in entries or key in state["sent"]:
+        if not pl or t in pos or t in entries or key in state["sent"] or t in dt_syms:
             continue
         price = s["price"]
         if price < pl["zoneLow"]:
