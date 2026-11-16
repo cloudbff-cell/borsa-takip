@@ -1,7 +1,7 @@
 name: Gün aşırı yüzde çıkış testi (analiz)
 
 # Botun giriş kurallarıyla 10 yıllık testte stop -%2 / kâr al +%1 gibi sabit yüzde çıkışları karşılaştırır.
-# İşlem yapmaz, secret kullanmaz.
+# İşlem yapmaz, Alpaca anahtarı yalnız geçmiş 5 dk veriyi okumak için.
 on:
   push:
     branches: [main]
@@ -28,4 +28,7 @@ jobs:
           key: tarama-gunasiri-${{ github.run_id }}
           restore-keys: tarama-
       - name: Test
+        env:
+          ALPACA_KEY_ID: ${{ secrets.ALPACA_KEY_ID }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
         run: python -u tools/yuzde_cikis_test.py

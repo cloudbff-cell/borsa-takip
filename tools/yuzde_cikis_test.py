@@ -67,7 +67,36 @@ def entries(df, sig, total, up):
     return out, sell
 
 
-def simulate(df, ent, sell, v, optimistic=False):
+AMBIG = set()          # (sembol, tarih) – aynı gün hem stop hem hedef
+INTRA = {}             # (sembol, tarih) -> 5 dk mumlar (günlük mumla aynı ölçeğe getirilmiş)
+
+
+def resolve(sym, d, entry, stop, tp, from_open):
+    """5 dk veriyle hangisinin önce görüldüğünü bul: 'hedef' / 'stop' / None (bilinmiyor)."""
+    b = INTRA.get((sym, d))
+    if b is None:
+        return None
+    started = from_open
+    for _, r in b.iterrows():
+        if not started:                       # limitli giriş: fiyat giriş seviyesine inince başla
+            if r["l"] <= entry:
+                started = True
+                if r["l"] <= stop and r["h"] >= tp:
+                    return None
+                if r["l"] <= stop:
+                    return "stop"
+            continue
+        hs, ht = r["l"] <= stop, r["h"] >= tp
+        if hs and ht:
+            return None
+        if hs:
+            return "stop"
+        if ht:
+            return "hedef"
+    return None
+
+
+def simulate(df, ent, sell, v, optimistic=False, sym=None):
     o, h, l, c, a = (df[k].values for k in ("Open", "High", "Low", "Close", "atr"))
     idx, n, trades, i = df.index, len(df), [], 0
     keys = sorted(ent)
@@ -101,7 +130,13 @@ def simulate(df, ent, sell, v, optimistic=False):
                     break
                 hit_s, hit_t = l[j] <= stop, h[j] >= tp
                 if hit_s and hit_t:
-                    exit_px, why = (tp, "hedef") if optimistic else (stop, "stop")
+                    key = (sym, idx[j].date())
+                    AMBIG.add(key)
+                    res = resolve(sym, key[1], entry, stop, tp, j > i or o[i] == ent[i][0])
+                    if res == "hedef" or (res is None and optimistic):
+                        exit_px, why = tp, ("hedef (5dk)" if res else "hedef")
+                    else:
+                        exit_px, why = stop, ("stop (5dk)" if res else "stop")
                     break
                 if hit_s:
                     exit_px, why = stop, "stop"
@@ -151,6 +186,38 @@ def summarize(name, trades, years):
             f"{r[r<=0].mean() if (r<=0).any() else 0:+.2f} | {days:.1f} | {cagr:+.1f} | {dd:.1f} |")
 
 
+def fetch_intraday(data):
+    """Belirsiz günler için Alpaca 5 dk verisi (tarih başına tek istek, o günün tüm sembolleri)."""
+    from engine import trader
+    if not os.getenv("ALPACA_KEY_ID"):
+        log("Alpaca anahtarı yok: belirsiz günler 5 dk veriyle çözülmedi")
+        return
+    api = trader.Alpaca()
+    daily = {t: df for t, df, _, _ in data}
+    by_date = {}
+    for s, d in AMBIG:
+        by_date.setdefault(d, []).append(s)
+    ok = 0
+    for n, (d, syms) in enumerate(sorted(by_date.items())):
+        st = pd.Timestamp(d).tz_localize("America/New_York") + pd.Timedelta(hours=9, minutes=30)
+        try:
+            raw = api.bars(syms, start=st.isoformat(), end=(st + pd.Timedelta(hours=6, minutes=30)).isoformat(),
+                           feed="sip", adjustment="all")
+        except RuntimeError as e:
+            print(d, e)
+            continue
+        for s, rows in raw.items():
+            b = pd.DataFrame(rows)
+            if b.empty:
+                continue
+            b = b[["o", "h", "l", "c"]].astype(float)
+            dc = daily[s].loc[str(d), "Close"]
+            dc = float(dc.iloc[0] if hasattr(dc, "iloc") else dc)
+            INTRA[(s, d)] = b * (dc / b["c"].iloc[-1])     # günlük (düzeltilmiş) fiyat ölçeğine getir
+            ok += 1
+    log(f"Aynı gün hem stop hem hedef görülen {len(AMBIG)} gün; {ok} tanesi 5 dk veriyle incelendi")
+
+
 def main():
     cands = C.CANDIDATES + (C.ADRS if C.INCLUDE_ADRS else [])
     prices = D.download_prices(cands + [C.BENCHMARK], period="10y")
@@ -167,23 +234,29 @@ def main():
         total = tr_score.fillna(0) + volume_score(df) + K + season_bonus(df, spy)
         sig = compute_signals(df)
         ent, sell = entries(df, sig, total, up.fillna(False))
-        data.append((df, ent, sell))
+        data.append((t, df, ent, sell))
     start = spy.index[C.EMA_SLOW + 60]
     years = (spy.index[-1] - start).days / 365.25
     spy_cagr = ((spy.iloc[-1] / spy.loc[start:].iloc[0]) ** (1 / years) - 1) * 100
     log(f"## Gün aşırı strateji – sabit yüzde çıkış testi ({start:%Y-%m} – {spy.index[-1]:%Y-%m}, {years:.1f} yıl)")
     log(f"Evren: İslami filtreden geçen ilk {len(data)} hisse · giriş: botun mevcut kuralları · portföy 5 x %20 · "
         f"kayma %0.05 x 2 · SPY al-tut yıllık {spy_cagr:+.1f}%")
+    # 1. geçiş: belirsiz günleri topla, 5 dk veriyi çek
+    for name, v in VARIANTS.items():
+        if v.get("mode") != "atr":
+            for t, df, ent, sell in data:
+                simulate(df, ent, sell, v, False, t)
+    fetch_intraday(data)
     for opt in (False, True):
         log("")
-        log("### " + ("İyimser varsayım: aynı gün hem stop hem hedef görülürse HEDEF önce" if opt
-                      else "Temkinli varsayım: aynı gün hem stop hem hedef görülürse STOP önce"))
+        log("### " + ("İyimser: 5 dk veriyle de çözülemeyen günlerde HEDEF önce" if opt
+                      else "Temkinli: 5 dk veriyle de çözülemeyen günlerde STOP önce"))
         log("| Çıkış kuralı | İşlem | Kazanma % | Ort. % | Ort. kazanç / kayıp % | Ort. gün | Yıllık getiri % | Maks. düşüş % |")
         log("|---|---|---|---|---|---|---|---|")
         for name, v in VARIANTS.items():
             if opt and v.get("mode") == "atr":
                 continue
-            trades = [t for df, ent, sell in data for t in simulate(df, ent, sell, v, opt)]
+            trades = [tr for t, df, ent, sell in data for tr in simulate(df, ent, sell, v, opt, t)]
             log(summarize(name, trades, years))
             if not opt and name.endswith("(öneri)"):
                 w = pd.Series([t["why"] for t in trades]).value_counts()
