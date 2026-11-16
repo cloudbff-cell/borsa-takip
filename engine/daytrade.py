@@ -198,7 +198,7 @@ class DayTrader:
         self.flat_at = min(pd.Timestamp(session_open.normalize() + _hm(C.DT_FLATTEN)),
                            pd.Timestamp(session_close) - pd.Timedelta(minutes=10))
         self.state = load_state(self.today.isoformat())
-        self.tag = "🧪 SANAL" if getattr(api, "paper", True) else "💵 GERÇEK"
+        self.tag = "📋 SİNYAL (emir verilmedi)" if dry else ("🧪 SANAL" if getattr(api, "paper", True) else "💵 GERÇEK")
         self.universe, self.ctx, self.msgs = [], {}, []
         self.last_scan = None
         self.wait = 5
@@ -393,6 +393,8 @@ class DayTrader:
             r = rz.get(sym)
             if tr.get("error"):
                 L.append(f"• {sym}: emir hatası")
+            elif self.dry:
+                L.append(f"• {sym}: sinyal {tr['time']} @ ${tr['limit']:,.2f} · stop ${tr['stop']:,.2f} · hedef ${tr['tp']:,.2f}")
             elif not r or not r["bq"]:
                 L.append(f"• {sym}: emir dolmadı")
             else:

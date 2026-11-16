@@ -2,8 +2,9 @@ name: Günlük işlem (day trading)
 
 # Seans boyunca çalışan döngü: açılış aralığı kırılımı (ORB), yalnız alış, kaldıraçsız,
 # tüm pozisyonlar kapanıştan önce kapatılır. Evren: İslami filtreden geçen ilk 50 hisse.
-# Açma/kapama: Settings > Secrets and variables > Actions > Variables > DAYTRADE_ENABLED (true/false).
-# TRADING_ENABLED da true olmalıdır. ALPACA_PAPER=false yapılmadıkça sanal para kullanılır.
+# Varsayılan: SİNYAL MODU – kurallar canlı çalışır, sinyaller Telegram'a gelir ama emir verilmez.
+# Emir vermesi için: Settings > Secrets and variables > Actions > Variables > DAYTRADE_ENABLED = true
+# (TRADING_ENABLED da true olmalı). ALPACA_PAPER=false yapılmadıkça sanal para kullanılır.
 #
 # GitHub'da bir iş en fazla 6 saat sürebilir; seans 6,5 saat. Bu yüzden her gün iki tetikleme var:
 # ilki açılıştan önce başlar ve ~5,7 saat çalışır, ikincisi sıraya girer ve kapanışa kadar devam eder.
@@ -62,11 +63,11 @@ jobs:
           ALPACA_KEY_ID: ${{ secrets.ALPACA_KEY_ID }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           TRADING_ENABLED: ${{ vars.TRADING_ENABLED }}
-          DAYTRADE_ENABLED: ${{ vars.DAYTRADE_ENABLED || 'true' }}
+          DAYTRADE_ENABLED: ${{ vars.DAYTRADE_ENABLED }}
           ALPACA_PAPER: ${{ vars.ALPACA_PAPER || 'true' }}
           ALPACA_DATA_FEED: ${{ vars.ALPACA_DATA_FEED || 'iex' }}
         run: |
-          if [ "${{ inputs.dry }}" = "true" ]; then
+          if [ "${{ inputs.dry }}" = "true" ] || [ "$DAYTRADE_ENABLED" != "true" ]; then
             python -u -m engine.daytrade --dry --max-minutes 340
           else
             python -u -m engine.daytrade --max-minutes 340

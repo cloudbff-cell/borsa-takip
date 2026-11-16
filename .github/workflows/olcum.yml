@@ -4,7 +4,7 @@ name: Puan ölçümü (analiz)
 on:
   push:
     branches: [main]
-    paths: ["tools/**"]
+    paths: ["tools/crypto_test.py", "tools/olcum.py"]
   workflow_dispatch:
 
 permissions:

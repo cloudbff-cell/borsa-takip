@@ -82,7 +82,8 @@ S&P 500 Shariah / SPUS yöntemine yakın iki katmanlı tarama; ilk 50, sektör l
 - **Risk:** sermayenin %30'u günlük işleme ayrılır (`DAYTRADE_ALLOC`; swing bot kalan %70 ile çalışır). İşlem başına bu payın %1'i risk, en fazla 3 açık pozisyon, günde 4 giriş, günlük-işlem kaybı %3'ü aşarsa yeni giriş yok.
 - **Ayrım:** günlük emirlerin kimliği `dt-` ile başlar; swing bot bu hisselere dokunmaz, günlük bot da swing botun elindeki hisselere girmez.
 - **Çalışma:** iş akışı seans boyunca açık kalır (her gün iki tetikleme; GitHub'da tek iş en fazla 6 saat). Veri: Alpaca piyasa verisi (ücretsiz IEX akışı; ücretli SIP için `ALPACA_DATA_FEED=sip`). Telegram'a her giriş/çıkış ve gün sonu özeti gelir.
-- **Açma/kapama:** Actions Variables → `DAYTRADE_ENABLED` = `true`/`false` (tanımlı değilse açık kabul edilir; `TRADING_ENABLED=true` da gerekir). Emir vermeden denemek için: Actions → Günlük işlem → Run workflow → dry = true.
+- **Açma/kapama:** varsayılan **sinyal modu**: kurallar her gün canlı çalışır, sinyaller Telegram'a gelir ama emir verilmez ve swing botun sermayesi bölünmez. Emirleri açmak için Actions Variables → `DAYTRADE_ENABLED` = `true` (`TRADING_ENABLED=true` da gerekir).
+- **İlk geri test sonucu (Kasım 2026, son ~60 işlem günü):** varsayılan kurallarla 44 işlem, %25 kazanma, kâr faktörü 0,42, günlük-işlem sermayesinde ≈ −%15. Denenen hiçbir varyasyon (RVOL 1/2, hedef 1,5R/3R, trend filtresiz) kârlı değildi. Bu yüzden emirler kapalı başlar.
 - **Geri test:** Actions → *Günlük işlem geri testi* son ~60 işlem gününün 5 dakikalık verisiyle kuralları ve birkaç ayar varyasyonunu test eder (sonuç iş özetinde).
 - Not: ABD'de 4 Haziran 2026'dan itibaren "pattern day trader" kuralı ve 25.000 $ alt sınırı kaldırıldı; yine de aracı kurumun kendi kuralları geçerlidir.
 
