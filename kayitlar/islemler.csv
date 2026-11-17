@@ -5,3 +5,4 @@ tarih,saat,sembol,islem,adet,fiyat,tutar,neden,strateji,emir_id,anahtar
 2026-11-16,06:58,MSFT,SIFIRLAMA,31,528.45,16381.95,"eski strateji pozisyonu, sıfırlama ile piyasa emriyle kapatıldı",eski,,reset-2026-11-16-MSFT
 2026-11-16,06:58,TMO,SIFIRLAMA,19,700.5,13309.5,"eski strateji pozisyonu, sıfırlama ile piyasa emriyle kapatıldı",eski,,reset-2026-11-16-TMO
 2026-11-16,16:01,PLTR,EMİR,179,157.18,28135.22,"3 gün üst üste düştü (-7.0%), 200 gün ort. üstünde; limit = kapanış $160.39 − %2",3 gün düşüş,dip-2026-11-16-PLTR,emir-dip-2026-11-16-PLTR
+2026-11-17,10:40,PLTR,ALIŞ,179,157.04,28110.16,3 gün düşüş: limitli alış emri doldu,3 gün düşüş,dip-2026-11-16-PLTR,alis-2abd10df-76b5-4633-bbc7-7b3e1b4af285
