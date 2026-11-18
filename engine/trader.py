@@ -364,6 +364,9 @@ def run(summary, by, mode, state, client=None):
     all_orders = [o for o in api.open_orders()
                   if o.get("asset_class", "us_equity") != "crypto" and o["symbol"] not in dt_syms]
     pos = {k: v for k, v in all_pos.items() if k not in skip}
+    print("Pozisyonlar:", ", ".join(f"{k} {v['qty']}{' (dip)' if k in dip_syms else ''}" for k, v in all_pos.items()) or "yok")
+    print("Açık emirler:", ", ".join(f"{o['symbol']} {o['side']} {o.get('type')} {o.get('status')}"
+                                     for o in all_orders) or "yok")
     orders = [o for o in all_orders if o["symbol"] not in skip]
     flat = _legs(orders)
     tag = "🧪 SANAL" if getattr(api, "paper", True) else "💵 GERÇEK"
