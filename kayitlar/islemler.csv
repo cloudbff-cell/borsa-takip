@@ -9,3 +9,6 @@ tarih,saat,sembol,islem,adet,fiyat,tutar,neden,strateji,emir_id,anahtar
 2026-11-17,12:03,PLTR,SATIŞ,179.0,154.07,27578.53,stop (−%2),3 gün düşüş,5799c5bc-dfa7-46fb-862a-0f695dea600f,satis-637957f3-afbe-46d5-843a-b0263045de12
 2026-11-17,16:01,AMD,EMİR,63,493.34,31080.42,"3 gün üst üste düştü (-14.0%), 200 gün ort. üstünde; limit = kapanış $503.41 − %2",3 gün düşüş,dip-2026-11-17-AMD,emir-dip-2026-11-17-AMD
 2026-11-17,16:01,ANET,EMİR,97,182.73,17724.81,"3 gün üst üste düştü (-9.8%), 200 gün ort. üstünde; limit = kapanış $186.46 − %2",3 gün düşüş,dip-2026-11-17-ANET,emir-dip-2026-11-17-ANET
+2026-11-18,09:38,AMZN,SATIŞ,49,261.29,12803.21,eski strateji pozisyonu kapatıldı (piyasa emri),eski,,legacy-2026-11-18-AMZN
+2026-11-18,09:38,COST,SATIŞ,17,1107.61,18829.37,eski strateji pozisyonu kapatıldı (piyasa emri),eski,,legacy-2026-11-18-COST
+2026-11-18,09:38,TMO,SATIŞ,19,688.08,13073.52,eski strateji pozisyonu kapatıldı (piyasa emri),eski,,legacy-2026-11-18-TMO
