@@ -159,34 +159,65 @@ class Alpaca:
         return self._r("DELETE", f"/v2/positions/{sym}")
 
 
-def close_legacy(api, pos, orders, tag):
+def close_legacy(api, pos, orders, tag, wait=1.5, tries=8):
     """Eski stratejiden kalan pozisyonları piyasa emriyle kapat (piyasa kapalıysa açılışta). Zaten kapatma
-    emri bekleyenlere tekrar emir verilmez."""
-    done = []
-    for s, p in pos.items():
-        if any(o["symbol"] == s and o["side"] == "sell" and o.get("type") == "market" for o in orders):
-            continue
-        for o in orders:
-            if o["symbol"] == s:
-                try:
-                    api.cancel(o["id"])
-                except RuntimeError as e:
-                    print(e)
+    emri bekleyenlere tekrar emir verilmez.
+
+    Not: Alpaca'da emir iptali eşzamansızdır. Stop/kâr al emri iptal edilir edilmez pozisyon kapatılmaya
+    çalışılırsa hisseler hâlâ o emirlere bağlı göründüğü için 403 "insufficient qty available" hatası
+    döner. Bu yüzden önce ilgili tüm emirler iptal edilir, iptal tamamlanana kadar beklenir, kapatma
+    403/422 hatasında birkaç kez yeniden denenir."""
+    import time
+    todo = {s: p for s, p in pos.items()
+            if not any(o["symbol"] == s and o["side"] == "sell" and o.get("type") == "market" for o in orders)}
+    if not todo:
+        return None
+    # 1) Bu sembollerin bütün açık emirlerini iptal et
+    for o in orders:
+        if o["symbol"] in todo:
+            try:
+                api.cancel(o["id"])
+            except RuntimeError as e:
+                print(e)
+    # 2) İptaller tamamlanana kadar bekle (en fazla tries x wait sn)
+    for _ in range(tries):
         try:
-            api.close_position(s)
+            left = [o for o in api.open_orders() if o["symbol"] in todo]
         except RuntimeError as e:
-            done.append(f"⚠️ {s} kapatılamadı: {e}")
+            print(e)
+            left = []
+        if not left:
+            break
+        time.sleep(wait)
+    # 3) Pozisyonları kapat; hisse hâlâ emre bağlıysa (403/422) bekleyip yeniden dene
+    done, failed = [], []
+    for s, p in todo.items():
+        err = None
+        for i in range(tries):
+            try:
+                api.close_position(s)
+                err = None
+                break
+            except RuntimeError as e:
+                err = e
+                if " 403 " not in str(e) and " 422 " not in str(e):
+                    break
+                time.sleep(wait)
+        if err:
+            print("Eski pozisyon kapatılamadı:", s, err)
+            failed.append(f"⚠️ {s} kapatılamadı: {err}")
             continue
         today = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
         kayit.add_event(sembol=s, islem="SATIŞ", adet=p["qty"], fiyat=round(float(p["current_price"]), 2),
                         neden="eski strateji pozisyonu kapatıldı (piyasa emri)", strateji="eski",
                         anahtar=f"legacy-{today}-{s}")
+        print("Eski pozisyon kapatma emri verildi:", s, p["qty"])
         done.append(f"• <b>{s}</b> {p['qty']} adet (≈${float(p.get('market_value') or 0):,.0f}, "
                     f"K/Z {float(p.get('unrealized_pl') or 0):+,.2f}$)")
-    if not done:
+    if not done and not failed:
         return None
     return (f"🧹 <b>Eski strateji pozisyonlarını kapatıyorum</b> ({tag}) – piyasa emri"
-            " (piyasa kapalıysa açılışta gerçekleşir):\n" + "\n".join(done))
+            " (piyasa kapalıysa açılışta gerçekleşir):\n" + "\n".join(done + failed))
 
 
 def reset_command(api, state, equity):
@@ -347,6 +378,13 @@ def run(summary, by, mode, state, client=None):
     legacy_alert = None
     if not legacy_on and C.DIP_CLOSE_LEGACY and mode in ("intraday", "post") and pos:
         legacy_alert = close_legacy(api, pos, orders, tag)
+        # Yalnız hata içeren uyarı günde bir kez gönderilir (her 15 dk'da tekrar etmesin)
+        if legacy_alert and "• <b>" not in legacy_alert:
+            day = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+            if state.get("legacy_warned") == day:
+                legacy_alert = None
+            else:
+                state["legacy_warned"] = day
 
     # 1) Çıkışlar: kapanışta teyitli SAT sinyali veya bilanço öncesi (post modunda; emir ertesi açılışta gerçekleşir)
     m_msgs, closed = manual_sells(api, pos, flat, by, state, tag)
