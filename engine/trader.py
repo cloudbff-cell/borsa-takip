@@ -151,15 +151,42 @@ class Alpaca:
 
     def close_all(self):
         """Tüm emirleri iptal et ve tüm pozisyonları kapat (piyasa kapalıysa açılışta gerçekleşir)."""
-        out = self._r("DELETE", "/v2/positions", params={"cancel_orders": "true"})
-        try:
-            self._r("DELETE", "/v2/orders")
-        except RuntimeError as e:
-            print(e)
-        return out
+        # cancel_orders=true önce açık emirleri iptal eder, sonra satış emirlerini verir.
+        # (Ayrıca DELETE /v2/orders çağrılmaz: o, yeni verilen satış emirlerini de iptal ediyordu.)
+        return self._r("DELETE", "/v2/positions", params={"cancel_orders": "true"})
 
     def close_position(self, sym):
         return self._r("DELETE", f"/v2/positions/{sym}")
+
+
+def close_legacy(api, pos, orders, tag):
+    """Eski stratejiden kalan pozisyonları piyasa emriyle kapat (piyasa kapalıysa açılışta). Zaten kapatma
+    emri bekleyenlere tekrar emir verilmez."""
+    done = []
+    for s, p in pos.items():
+        if any(o["symbol"] == s and o["side"] == "sell" and o.get("type") == "market" for o in orders):
+            continue
+        for o in orders:
+            if o["symbol"] == s:
+                try:
+                    api.cancel(o["id"])
+                except RuntimeError as e:
+                    print(e)
+        try:
+            api.close_position(s)
+        except RuntimeError as e:
+            done.append(f"⚠️ {s} kapatılamadı: {e}")
+            continue
+        today = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+        kayit.add_event(sembol=s, islem="SATIŞ", adet=p["qty"], fiyat=round(float(p["current_price"]), 2),
+                        neden="eski strateji pozisyonu kapatıldı (piyasa emri)", strateji="eski",
+                        anahtar=f"legacy-{today}-{s}")
+        done.append(f"• <b>{s}</b> {p['qty']} adet (≈${float(p.get('market_value') or 0):,.0f}, "
+                    f"K/Z {float(p.get('unrealized_pl') or 0):+,.2f}$)")
+    if not done:
+        return None
+    return (f"🧹 <b>Eski strateji pozisyonlarını kapatıyorum</b> ({tag}) – piyasa emri"
+            " (piyasa kapalıysa açılışta gerçekleşir):\n" + "\n".join(done))
 
 
 def reset_command(api, state, equity):
@@ -315,10 +342,16 @@ def run(summary, by, mode, state, client=None):
     if daytrade_enabled():
         equity *= (1 - C.DAYTRADE_ALLOC)      # günlük işleme ayrılan pay swing bota dahil edilmez
 
+    # Ana strateji 'dip' iken eski stratejiden kalan pozisyonlar yönetilmez, kapatılır
+    legacy_on = C.STRATEGY != "dip"
+    legacy_alert = None
+    if not legacy_on and C.DIP_CLOSE_LEGACY and mode in ("intraday", "post") and pos:
+        legacy_alert = close_legacy(api, pos, orders, tag)
+
     # 1) Çıkışlar: kapanışta teyitli SAT sinyali veya bilanço öncesi (post modunda; emir ertesi açılışta gerçekleşir)
     m_msgs, closed = manual_sells(api, pos, flat, by, state, tag)
     msgs += m_msgs
-    if mode == "post":
+    if legacy_on and mode == "post":
         for sym, p in pos.items():
             s = by.get(sym)
             if not s or sym in closed:
@@ -349,7 +382,7 @@ def run(summary, by, mode, state, client=None):
                 msgs.append(f"⚠️ {sym} kapatılamadı: {e}")
 
     # 2) İz süren stop: girişten beri en yüksek fiyat - TRAIL_ATR x ATR; stop yalnız yukarı taşınır
-    if C.TRAIL_ATR and mode in ("intraday", "post"):
+    if legacy_on and C.TRAIL_ATR and mode in ("intraday", "post"):
         msgs += _trail_stops(api, {k: v for k, v in pos.items() if k not in closed}, flat, by, state, tag)
     state["held"] = sorted(pos)
     state["trail"] = {k: v for k, v in state.get("trail", {}).items() if k in pos}
@@ -380,7 +413,7 @@ def run(summary, by, mode, state, client=None):
         # Anlık bildirim yalnız emir girerken (ve sıfırlamada); diğer her şey gün sonu raporuna not olarak gider.
         if mode == "post":
             msgs += cancel_stale_entries(api, orders, tag)
-        alerts = [reset_msg] if reset_msg else []
+        alerts = [m for m in (reset_msg, legacy_alert) if m]
         if mode in ("intraday", "post") and not reset_msg:
             cash = min(float(acct.get("cash", 0) or 0), bp) if C.NO_MARGIN else bp
             a, _ = dip.run(summary, by, mode, state, api, equity, cash, tag)

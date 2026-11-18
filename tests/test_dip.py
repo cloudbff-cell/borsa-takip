@@ -120,15 +120,18 @@ def main():
     m2, port2 = trader.run(summary2, {"AAA": summary2["stocks"][0], "BBB": {"high": 99.5, "low": 96.2}},
                            "post", state, api)
     assert ("stop", "S1", 95.06) in api.calls and ("tp", "T1", 98.94) in api.calls, api.calls
-    assert m2 == [], m2                                     # dolum anlık bildirilmez, raporda
+    assert not [m for m in m2 if "alış" in m.lower() and "BBB" in m], m2   # dolum anlık bildirilmez, raporda
     assert any(e["islem"] == "ALIŞ" and e["sembol"] == "BBB" for e in kayit.events())
     rep = run.daily_report({"lastBar": kayit.now_ny().strftime("%Y-%m-%d")}, port2, state)
     assert "BBB" in rep and "Bekleniyor" in rep, rep
     print(rep)
     assert {p["sym"] for p in port2["positions"]} == {"BBB", "OLD"}
     assert not [x for x in api.calls if x[0] == "buy" and x[1] == "AAA"]
-    # Eski pozisyon eski kurallarla korunur (stopu yoksa koruyucu stop), yeni yapı onu satmaz
-    assert ("stop_sell", "OLD", 5, 46.0) in api.calls and ("close", "OLD") not in api.calls, api.calls
+    # Eski stratejiden kalan pozisyon kapatılır, anlık bildirim gider; günlüğe yazılır
+    assert ("close", "OLD") in api.calls and not [x for x in api.calls if x[0] == "stop_sell" and x[1] == "OLD"], api.calls
+    assert any("Eski strateji" in m and "OLD" in m for m in m2), m2
+    assert any(e["sembol"] == "OLD" and e["strateji"] == "eski" for e in kayit.events())
+    api.pos = [x for x in api.pos if x["symbol"] != "OLD"]
 
     # 3. akşam: dolmayan alışlar 2 seans sonra iptal
     summary3 = {"lastBar": "2026-11-17", "stocks": [], "picks": []}

@@ -45,6 +45,18 @@ def download_prices(tickers, period="3y", interval="1d") -> dict:
                     out[t] = df[["Open", "High", "Low", "Close", "Volume"]].astype(float)
             except Exception:
                 pass
+    # Paralel indirmede bazen hata olur (ör. "database is locked"): eksikleri tek tek bir kez daha dene
+    missing = [t for t in tickers if t not in out]
+    for t in missing:
+        try:
+            df = yf.download(t, period=period, interval=interval, auto_adjust=True, threads=False,
+                             progress=False, multi_level_index=False)
+            df = df.dropna(subset=["Close"])
+            if len(df) > 30:
+                df.index = pd.to_datetime(df.index).tz_localize(None)
+                out[t] = df[["Open", "High", "Low", "Close", "Volume"]].astype(float)
+        except Exception as e:  # noqa: BLE001
+            print("İndirilemedi:", t, e)
     return out
 
 

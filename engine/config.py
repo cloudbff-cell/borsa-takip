@@ -114,6 +114,7 @@ DIP_STOP = 0.02              # stop: alış fiyatının %2 altı
 DIP_TP = 0.02                # kâr al: alış fiyatının %2 üstü
 DIP_ENTRY_SESSIONS = 2       # limitli alış bu kadar seans dolmazsa iptal
 DIP_MAX_DAYS = 10            # pozisyon en fazla bu kadar seans tutulur
+DIP_CLOSE_LEGACY = True      # eski stratejiden kalan pozisyonları otomatik kapat
 
 # ---------- Otomatik işlem (Alpaca) ----------
 # Bot yalnızca TRADING_ENABLED=true ortam değişkeni varsa emir verir.
