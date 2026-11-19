@@ -17,3 +17,12 @@ tarih,saat,sembol,islem,adet,fiyat,tutar,neden,strateji,emir_id,anahtar
 2026-11-19,10:39,AMD,ALIŞ,63,492.88,31051.44,3 gün düşüş: limitli alış emri doldu,3 gün düşüş,dip-2026-11-17-AMD,alis-dc26357e-e282-4d4f-8fbc-8ef47b0f6777
 2026-11-19,10:46,AMD,SATIŞ,63.0,482.9,30422.7,stop (−%2),3 gün düşüş,269f8ff4-7a72-4daf-863c-81e3cc748cae,satis-26fb3cf5-da1a-4f62-8687-766ff3f7c113
 2026-11-19,11:44,ACN,SATIŞ,141.0,218.32,30783.12,stop (−%2),3 gün düşüş,d60e7a21-56bc-4d70-b981-4bad86f5cef4,satis-8e8074ea-7dd4-4548-80f5-3363449803e5
+2026-11-19,16:01,ANET,İPTAL,97,182.73,17724.81,limitli alış 2 seansta dolmadı,3 gün düşüş,dip-2026-11-17-ANET,iptal-97ef2492-97ca-42e9-8834-630cb6cc36cd
+2026-11-19,16:01,MRK,EMİR,119,130.09,15480.71,"3 gün üst üste düştü (-8.1%), 200 gün ort. üstünde; limit = kapanış $132.74 − %2",3 gün düşüş,dip-2026-11-19-MRK,emir-dip-2026-11-19-MRK
+2026-11-19,16:01,LLY,EMİR,11,1324.18,14565.98,"3 gün üst üste düştü (-5.6%), 200 gün ort. üstünde; limit = kapanış $1,351.20 − %2",3 gün düşüş,dip-2026-11-19-LLY,emir-dip-2026-11-19-LLY
+2026-11-19,16:01,JNJ,EMİR,59,261.68,15439.12,"3 gün üst üste düştü (-5.5%), 200 gün ort. üstünde; limit = kapanış $267.02 − %2",3 gün düşüş,dip-2026-11-19-JNJ,emir-dip-2026-11-19-JNJ
+2026-11-19,16:01,QCOM,EMİR,18,163.63,2945.34,"1/3. parça · dipten tepeye %113 yükseliş, tepeden %42 düşüş, 10 seanstır yeni dip yok (dip $148.25), fiyat dibin %9.3 üstünde",orta vade,ov-2026-11-19-QCOM-1,emir-ov-2026-11-19-QCOM-1
+2026-11-19,16:01,CSCO,EMİR,32,95.65,3060.8,"1/3. parça · dipten tepeye %109 yükseliş, tepeden %28 düşüş, 9 seanstır yeni dip yok (dip $93.35), fiyat dibin %1.4 üstünde",orta vade,ov-2026-11-19-CSCO-1,emir-ov-2026-11-19-CSCO-1
+2026-11-19,16:01,PLTR,EMİR,20,155.22,3104.4,"1/3. parça · dipten tepeye %100 yükseliş, tepeden %28 düşüş, 10 seanstır yeni dip yok (dip $152.60), fiyat dibin %0.7 üstünde",orta vade,ov-2026-11-19-PLTR-1,emir-ov-2026-11-19-PLTR-1
+2026-11-19,16:01,UBER,EMİR,46,66.26,3047.96,"1/3. parça · dipten tepeye %56 yükseliş, tepeden %31 düşüş, 15 seanstır yeni dip yok (dip $64.04), fiyat dibin %2.4 üstünde",orta vade,ov-2026-11-19-UBER-1,emir-ov-2026-11-19-UBER-1
+2026-11-19,16:01,GEV,EMİR,4,764.21,3056.84,"1/3. parça · dipten tepeye %137 yükseliş, tepeden %38 düşüş, 7 seanstır yeni dip yok (dip $747.00), fiyat dibin %1.3 üstünde",orta vade,ov-2026-11-19-GEV-1,emir-ov-2026-11-19-GEV-1
