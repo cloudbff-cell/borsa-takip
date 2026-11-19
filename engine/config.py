@@ -137,6 +137,12 @@ OV_MAX_DAYS = 252            # en fazla ~1 yıl tutulur
 OV_EXIT = "yok"              # ek çıkış: "yok", "sma50" (kapanış 50 g altı), "sma150" (150 g altı), "atr" (iz süren)
 OV_TRAIL_ATR = 3.0           # OV_EXIT="atr" ise: girişten beri en yüksek kapanış - 3 ATR
 OV_EXIT_BUFFER = 0.0         # ortalamanın altına bu kadar % inmeden satma (gürültü payı)
+# 'Düşüş sonrası yatay taban' kuralı (ortavade_kural.features_taban)
+TB_MIN_RISE = 0.40           # tepeden önce dipten tepeye en az %40 yükseliş (1 yıllık grafik)
+TB_MIN_DROP = 0.25           # tepeden en az %25 düşmüş
+TB_SIDE_DAYS = 40            # yatay bant: son 40 seans (~2 ay, 3 aylık grafikte)
+TB_MAX_RANGE = 0.15          # bant genişliği en fazla %15
+TB_ENTRY = "yatay"           # "yatay": yatay sürerken bandın alt yarısında · "kirilim": bandın üstüne çıkışta
 
 # ---------- Otomatik işlem (Alpaca) ----------
 # Bot yalnızca TRADING_ENABLED=true ortam değişkeni varsa emir verir.

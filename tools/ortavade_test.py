@@ -35,7 +35,8 @@ def log(s=""):
     OUT.append(s)
 
 
-def trades_for(sym, d, sig, exit_kind, stop_pct=0.08, lim_above=0.01, tp=None, buf=0.0, trail_atr=3.0):
+def trades_for(sym, d, sig, exit_kind, stop_pct=0.08, lim_above=0.01, tp=None, buf=0.0, trail_atr=3.0,
+               maxd=MAXD, stop_lvl=None):
     o, h, l, c = (d[k].to_numpy() for k in ("Open", "High", "Low", "Close"))
     s50, s150, a, r63 = (d[k].to_numpy() for k in ("sma50", "sma150", "atr", "ret63"))
     idx = d.index
@@ -54,13 +55,15 @@ def trades_for(sym, d, sig, exit_kind, stop_pct=0.08, lim_above=0.01, tp=None, b
             continue
         e *= 1 + SLIP
         stop = e * (1 - stop_pct)
+        if stop_lvl is not None and not np.isnan(stop_lvl[i]):
+            stop = max(stop, min(stop_lvl[i], e * 0.97))      # bant dibinin altı, en fazla stop_pct
         tgt = e * (1 + tp) if tp else np.inf
         hic = e
         k, px, why = None, None, None
         if l[j] <= stop:                       # aynı gün stop (temkinli)
             k, px, why = j, stop, "stop"
         else:
-            for t in range(j, min(j + MAXD, n)):
+            for t in range(j, min(j + maxd, n)):
                 if t > j:
                     if o[t] <= stop:
                         k, px, why = t, o[t], "stop"
@@ -89,7 +92,7 @@ def trades_for(sym, d, sig, exit_kind, stop_pct=0.08, lim_above=0.01, tp=None, b
                         k, px, why = t, c[t], "kural"
                     break
             if k is None:
-                k = min(j + MAXD, n) - 1
+                k = min(j + maxd, n) - 1
                 px, why = c[k], ("süre" if k < n - 1 else "açık")
         out.append({"s": sym, "in": idx[j], "out": idx[k], "e": e, "px": px * (1 - SLIP),
                     "ret": px * (1 - SLIP) / e - 1, "score": r63[i] if not np.isnan(r63[i]) else -9,

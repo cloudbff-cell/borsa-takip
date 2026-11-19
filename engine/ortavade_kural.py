@@ -109,3 +109,80 @@ def snapshot(df: pd.DataFrame) -> dict:
             "baseDepth": f(r["base_depth"] * 100, 1), "volr": f(r["volr"]), "ext150": f(r["ext150"] * 100, 1),
             "ret63": f(r["ret63"] * 100, 1), "hi252": f(r["hi252"]), "lo252": f(r["lo252"]), "atr": f(r["atr"]),
             "limit": f(r["Close"] * (1 + C.OV_LIMIT_ABOVE))}
+
+
+# ---------------------------------------------------------------------------------------------------------
+# 'Düşüş sonrası yatay taban' (kullanıcının istediği): grafiğin SAĞ ucu. 1 yıl içinde güçlü yükseliş, tepe,
+# sert düşüş; fiyat dipte yatay gidiyor (yeni dip yapmıyor) -> yatayda alım (ya da yataydan yukarı çıkışta).
+# ---------------------------------------------------------------------------------------------------------
+def features_taban(df: pd.DataFrame, side_days: int = None) -> pd.DataFrame:
+    n = side_days or C.TB_SIDE_DAYS
+    d = df[["Open", "High", "Low", "Close", "Volume"]].copy()
+    h, lo, c = d["High"].to_numpy(), d["Low"].to_numpy(), d["Close"].to_numpy()
+    N = len(c)
+    hi_s = d["High"].rolling(252)
+    d["peak"] = hi_s.max()
+    age = hi_s.apply(lambda a: len(a) - 1 - int(np.argmax(a)), raw=True)
+    d["peak_age"] = age
+    lo252 = d["Low"].rolling(252).min().to_numpy()
+    pre = np.full(N, np.nan)
+    a_ = age.to_numpy()
+    for i in range(N):
+        if not np.isnan(a_[i]):
+            p = i - int(a_[i])
+            pre[i] = lo252[p] if p >= 0 else np.nan
+    d["pre_low"] = pre                                     # tepeden önceki 1 yılın dibi (yükselişin başladığı yer)
+    d["rise"] = d["peak"] / d["pre_low"] - 1               # dipten tepeye yükseliş
+    d["drop"] = 1 - d["Close"] / d["peak"]                 # tepeden bugüne düşüş
+    d["side_hi"] = d["High"].rolling(n).max()
+    d["side_lo"] = d["Low"].rolling(n).min()
+    d["side_rng"] = d["side_hi"] / d["side_lo"] - 1        # son n günün bandı
+    d["no_new_low"] = d["Low"].rolling(15).min() > d["side_lo"] * 1.0001   # son 15 günde yeni dip yok
+    d["pos_rng"] = (d["Close"] - d["side_lo"]) / (d["side_hi"] - d["side_lo"]).replace(0, np.nan)
+    d["side_hi_p"] = d["High"].shift(1).rolling(n).max()
+    d["vol50"] = d["Volume"].shift(1).rolling(50).mean()
+    d["volr"] = d["Volume"] / d["vol50"]
+    d["atr"] = atr(d, 14)
+    d["sma150"] = d["Close"].rolling(150).mean()
+    d["sma50"] = d["Close"].rolling(50).mean()
+    d["ret63"] = d["Close"] / d["Close"].shift(63) - 1
+    d["base"] = ((d["rise"] >= C.TB_MIN_RISE) & (d["drop"] >= C.TB_MIN_DROP) & (d["peak_age"] >= n)
+                 & (d["side_rng"] <= C.TB_MAX_RANGE) & d["no_new_low"])
+    return d
+
+
+def entries_taban(d: pd.DataFrame, kind: str = None, max_range: float = None, min_drop: float = None,
+                  min_rise: float = None) -> pd.Series:
+    """'yatay': yatay taban sürerken (bandın alt yarısında) · 'kirilim': yatay bandın zirvesi yukarı kırılırken."""
+    kind = kind or C.TB_ENTRY
+    base = d["base"]
+    if max_range is not None or min_drop is not None or min_rise is not None:
+        base = ((d["rise"] >= (C.TB_MIN_RISE if min_rise is None else min_rise))
+                & (d["drop"] >= (C.TB_MIN_DROP if min_drop is None else min_drop))
+                & (d["peak_age"] >= C.TB_SIDE_DAYS)
+                & (d["side_rng"] <= (C.TB_MAX_RANGE if max_range is None else max_range)) & d["no_new_low"])
+    base = base.fillna(False).astype(bool)
+    if kind == "yatay":
+        return base & (d["pos_rng"] <= 0.5)
+    if kind == "yatay_her":
+        return base
+    if kind == "kirilim":
+        prev = base.shift(1, fill_value=False)
+        return prev & (d["Close"] > d["side_hi_p"]) & (d["volr"] >= 1.2)
+    raise ValueError(kind)
+
+
+def snapshot_taban(df: pd.DataFrame) -> dict:
+    if len(df) < 300:
+        return {"signal": False}
+    d = features_taban(df.tail(600))
+    r = d.iloc[-1]
+    sig = bool(entries_taban(d).iloc[-1])
+
+    def f(x, k=2):
+        return None if pd.isna(x) else round(float(x), k)
+    return {"signal": sig, "kind": C.TB_ENTRY, "close": f(r["Close"]), "peak": f(r["peak"]), "preLow": f(r["pre_low"]),
+            "rise": f(r["rise"] * 100, 1), "drop": f(r["drop"] * 100, 1), "peakAge": int(r["peak_age"]) if not pd.isna(r["peak_age"]) else None,
+            "sideHi": f(r["side_hi"]), "sideLo": f(r["side_lo"]), "sideRng": f(r["side_rng"] * 100, 1),
+            "posRng": f(r["pos_rng"] * 100, 0), "ret63": f(r["ret63"] * 100, 1), "atr": f(r["atr"]),
+            "limit": f(r["Close"] * (1 + C.OV_LIMIT_ABOVE))}
