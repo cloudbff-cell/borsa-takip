@@ -14,3 +14,4 @@ tarih,saat,sembol,islem,adet,fiyat,tutar,neden,strateji,emir_id,anahtar
 2026-11-18,09:38,TMO,SATIŞ,19,688.08,13073.52,eski strateji pozisyonu kapatıldı (piyasa emri),eski,,legacy-2026-11-18-TMO
 2026-11-18,16:01,ACN,EMİR,141,222.91,31430.31,"3 gün üst üste düştü (-9.2%), 200 gün ort. üstünde; limit = kapanış $227.46 − %2",3 gün düşüş,dip-2026-11-18-ACN,emir-dip-2026-11-18-ACN
 2026-11-19,09:52,ACN,ALIŞ,141,222.83,31419.03,3 gün düşüş: limitli alış emri doldu,3 gün düşüş,dip-2026-11-18-ACN,alis-7d1427f9-b1e8-4249-9f4b-e19b55df0de4
+2026-11-19,10:39,AMD,ALIŞ,63,492.88,31051.44,3 gün düşüş: limitli alış emri doldu,3 gün düşüş,dip-2026-11-17-AMD,alis-dc26357e-e282-4d4f-8fbc-8ef47b0f6777
