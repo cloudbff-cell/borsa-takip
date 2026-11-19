@@ -1,14 +1,14 @@
-"""Orta vade stratejisi – evre 2 alımı (kurallar: engine/ortavade_kural.py, test: tools/ortavade_test.py).
+"""Orta vade stratejisi (kullanıcının kuralı): düşüş sonrası dipte yatay + kademeli alım.
 
-Akış (kapanıştan sonra, 'post' modunda günde bir kez):
-  1) Sinyal: İslami filtreden geçen ilk 50'de 1 yıllık grafikte evre 2 + 3 aylık grafikte taban kırılımı ya da
-     50 g ortalamaya geri çekilip dönüş. Aynı gün birden çok sinyal varsa son 3 ayda en güçlü olan önce.
-  2) Alış: kapanışın en çok OV_LIMIT_ABOVE üstüne limitli alış + bağlı -OV_STOP stop (OTO, GTC). Ertesi seans
-     dolmazsa iptal (fiyat boşlukla kaçtıysa kovalanmaz).
-  3) Satış: stop gün içinde; ayrıca kapanış 50 g ortalamanın altına inince (OV_EXIT) ertesi açılışta satılır.
-     Hisse İslami filtreden çıkarsa satılır.
-  4) Boyut: sermayenin OV_ALLOC payı / OV_MAX_POSITIONS. Emir kimliği 'ov-' ile başlar; kısa vade (dip-)
-     ve günlük işlem (dt-) pozisyonlarına dokunmaz.
+Kurallar: engine/ortavade_kural.py (features_taban / setup_taban), test: tools/taban_test.py.
+  Sinyal : İslami filtreden geçen ilk 50'de; 1 yıllık grafikte dipten tepeye >= %40 yükseliş, tepeden dibe
+           >= %25 düşüş; 3 aylık grafikte dipten sonra en az 3 seans yeni dip yok ve fiyat dibin en çok %10 üstünde.
+  Alış   : kademeli, TB_TRANCHES parça (varsayılan 3: ilk alış günü, 3. ve 6. seans – hâlâ dipte/yataydaysa).
+           Her parça kapanıştan sonra, ertesi seans için kapanışın en çok %1 üstüne limitli alış (1 seans geçerli).
+           Her parçaya bağlı stop (dibin TB_STOP_BELOW altı) ve kâr al (ortalama maliyet + TB_TP).
+  Satış  : stop (dip kırıldı -> yatay bitti), kâr al, en fazla TB_MAX_DAYS seans, İslami filtreden çıkarsa.
+  Boyut  : pozisyon bütçesi = orta vade payı / OV_MAX_POSITIONS, ilk alışta sabitlenir; her parça bütçenin 1/n'i.
+Emir kimliği 'ov-' ile başlar; kısa vade (dip-) ve günlük işlem (dt-) pozisyonlarına dokunmaz.
 """
 import math
 from datetime import datetime, timedelta
@@ -37,7 +37,7 @@ def _orders(api, days=400):
 
 
 def last_buy_owner(hist):
-    """sembol -> en son dolan alış emrinin kimliği (hangi stratejinin pozisyonu olduğunu belirler)."""
+    """sembol -> en son dolan alış emrinin kimliği (pozisyonun hangi stratejiye ait olduğu)."""
     best = {}
     for o in hist:
         if o.get("side") != "buy" or _num(o.get("filled_qty")) <= 0:
@@ -66,18 +66,13 @@ def _ts(o, k="filled_at"):
     return t.strftime("%Y-%m-%d"), t.strftime("%H:%M")
 
 
-KIND_TR = {"kirilim": "3 aylık taban kırılımı", "geri": "evre 2'de 50 g ortalamaya geri çekilip dönüş"}
+def n_parts():
+    return len(C.TB_TRANCHES)
 
 
-def why_text(o):
-    k = o.get("kind")
-    base = KIND_TR.get(k, k)
-    if k == "kirilim":
-        base += (f" (taban derinliği %{o['baseDepth']:.0f}, hacim {o['volr']:.1f}x, 3 ay zirvesi ${o['hi63']:,.2f})")
-    else:
-        base += f" (50 g ort. ${o['sma50']:,.2f})"
-    return (f"{base}; 1 yıllık grafik evre 2: 150 g ort. yükseliyor, fiyat ortalamanın %{o['ext150']:+.0f} üstünde, "
-            f"son 3 ay %{o['ret63']:+.0f}")
+def why_text(o, k=1):
+    return (f"{k}/{n_parts()}. parça · dipten tepeye %{o['rise']:.0f} yükseliş, tepeden %{o['drop']:.0f} düşüş, "
+            f"{o['flat']} seanstır yeni dip yok (dip ${o['bottom']:,.2f}), fiyat dibin %{o['near']:.1f} üstünde")
 
 
 def _context(s, rank, n_same, summary):
@@ -85,31 +80,17 @@ def _context(s, rank, n_same, summary):
     b = summary.get("benchmark") or {}
     sh = s.get("sharia") or {}
     return {"sinyal_tarihi": summary["lastBar"], "sembol": s["t"], "sirket": s.get("name"), "sektor": s.get("sector"),
-            "strateji": STRAT, "kapanis": o["close"], "limit": o["limit"], "giris_turu": KIND_TR.get(o["kind"]),
-            "evre": o.get("stage"), "taban_derinlik_yuzde": o.get("baseDepth"), "sma150_uzaklik_yuzde": o.get("ext150"),
-            "getiri_3a_yuzde": o.get("ret63"), "rsi14": s.get("rsi"), "hacim_orani": o.get("volr"),
+            "strateji": STRAT, "kapanis": o["close"], "limit": o["limit"], "giris_turu": "dipte yatay (kademeli)",
+            "evre": f"yükseliş %{o['rise']:.0f} / düşüş %{o['drop']:.0f} / yatay {o['flat']} seans",
+            "getiri_3a_yuzde": o.get("ret63"), "rsi14": s.get("rsi"),
             "atr_yuzde": round(s["atr"] / s["price"] * 100, 2) if s.get("atr") and s.get("price") else None,
-            "puan": s.get("score"), "piyasa_degeri_mr": round(s["mcap"] / 1e9, 1) if s.get("mcap") else None,
+            "hacim_orani": s.get("volr"), "puan": s.get("score"),
+            "piyasa_degeri_mr": round(s["mcap"] / 1e9, 1) if s.get("mcap") else None,
             "borc_orani": sh.get("debt"), "nakit_orani": sh.get("cash"),
             "spy_trend": b.get("trend"), "spy_gun_yuzde": b.get("chg"), "sira": rank, "ayni_gun_sinyal": n_same}
 
 
-def exit_reason(snap, info):
-    """Kapanışa göre çıkış nedeni ya da None."""
-    if not snap or snap.get("close") is None:
-        return None
-    c = snap["close"]
-    buf = 1 - C.OV_EXIT_BUFFER
-    if C.OV_EXIT == "sma50" and snap.get("sma50") and c < snap["sma50"] * buf:
-        return f"kapanış 50 g ortalamanın altında (${c:,.2f} < ${snap['sma50']:,.2f}) – yükseliş evresi bozuldu"
-    if C.OV_EXIT == "sma150" and snap.get("sma150") and c < snap["sma150"] * buf:
-        return f"kapanış 150 g ortalamanın altında (${c:,.2f} < ${snap['sma150']:,.2f}) – düşüş evresi"
-    return None
-
-
 def candidates(summary):
-    if C.OV_MARKET_FILTER and (summary.get("benchmark") or {}).get("above200") is False:
-        return []
     return sorted([s for s in summary["stocks"] if s.get("isTop") and (s.get("ov") or {}).get("signal")
                    and (s.get("sharia") or {}).get("ok")], key=lambda s: -(s["ov"].get("ret63") or -999))
 
@@ -129,23 +110,33 @@ def run(summary, by, mode, state, api, pocket, cash, tag):
                    and str(o.get("client_order_id", "")).startswith(TAG_PREFIX)}
     held = {s: p for s, p in positions.items() if s in mine}
 
-    # 1) Yeni dolumlar
+    # 1) Yeni dolumlar (ilk parça ya da ek parça)
     for s, p in held.items():
-        if s in vs["held"]:
+        q, e = _num(p["qty"]), _num(p["avg_entry_price"])
+        info = vs["held"].get(s)
+        if info and q <= info.get("qty", 0) + 1e-9:
             continue
-        e = _num(p["avg_entry_price"])
         fill = next((o for o in hist if o["symbol"] == s and o["side"] == "buy" and _num(o.get("filled_qty")) > 0
                      and str(o.get("client_order_id", "")).startswith(TAG_PREFIX)), {})
         fd, ft = _ts(fill)
-        key = (vs["pending"].pop(s, None) or {}).get("key") or f"ov-{fd}-{s}"
-        vs["held"][s] = {"since": fd, "sessions": 0, "entry": e, "key": key, "hi": e, "lo": e, "hic": e,
-                         "stop": round(e * (1 - C.OV_STOP), 2)}
-        kayit.add_event(tarih=fd, saat=ft, sembol=s, islem="ALIŞ", adet=p["qty"], fiyat=round(e, 2),
-                        neden=f"{STRAT}: limitli alış emri doldu", strateji=STRAT,
-                        emir_id=fill.get("client_order_id"), anahtar=f"alis-{fill.get('id', key)}")
-        kayit.upsert_signal(key, durum="açık", adet=p["qty"], alis_tarihi=fd, alis_saati=ft, alis_fiyati=round(e, 2),
-                            stop=vs["held"][s]["stop"])
-        notes.append(f"🟢 {s} (orta vade) alındı · {p['qty']} adet @ ${e:,.2f}")
+        pend = vs["pending"].pop(s, None) or {}
+        if not info:
+            key = pend.get("key") or f"ov-{fd}-{s}"
+            snap = (by.get(s) or {}).get("ov") or {}
+            info = vs["held"][s] = {"since": fd, "posts": 0, "parts": 0, "qty": 0.0, "entry": e, "key": key,
+                                    "hi": e, "lo": e, "bottom": pend.get("bottom") or snap.get("bottom"),
+                                    "budget": pend.get("budget") or pocket / C.OV_MAX_POSITIONS}
+        added = q - info["qty"]
+        info["parts"] = min(info["parts"] + 1, n_parts())
+        info["qty"], info["entry"] = q, e
+        px = _num(fill.get("filled_avg_price")) or e
+        kayit.add_event(tarih=fd, saat=ft, sembol=s, islem="ALIŞ", adet=round(added, 4), fiyat=round(px, 2),
+                        neden=f"{STRAT}: {info['parts']}/{n_parts()}. parça doldu (ort. maliyet ${e:,.2f})",
+                        strateji=STRAT, emir_id=fill.get("client_order_id"), anahtar=f"alis-{fill.get('id', s + fd)}")
+        kayit.upsert_signal(info["key"], durum="açık", adet=q, alis_tarihi=info["since"], alis_fiyati=round(e, 2),
+                            stop=round(info["bottom"] * (1 - C.TB_STOP_BELOW), 2) if info.get("bottom") else None,
+                            kar_al=round(e * (1 + C.TB_TP), 2))
+        notes.append(f"🟢 {s} (orta vade) {info['parts']}/{n_parts()}. parça alındı · {added:g} adet @ ${px:,.2f}")
 
     # 2) En yüksek / en düşük takip
     for s, info in vs["held"].items():
@@ -159,55 +150,55 @@ def run(summary, by, mode, state, api, pocket, cash, tag):
         if s in held:
             continue
         info = vs["held"].pop(s)
-        sell = next((o for o in hist if o["symbol"] == s and o["side"] == "sell" and _num(o.get("filled_qty")) > 0
-                     and _ts(o)[0] >= info["since"]), None)
-        px = _num(sell.get("filled_avg_price")) if sell else None
+        sells = [o for o in hist if o["symbol"] == s and o["side"] == "sell" and _num(o.get("filled_qty")) > 0
+                 and _ts(o)[0] >= info["since"]]
+        qty = sum(_num(o.get("filled_qty")) for o in sells)
+        px = (sum(_num(o.get("filled_avg_price")) * _num(o.get("filled_qty")) for o in sells) / qty) if qty else None
+        last = sells[0] if sells else None
         closing = vs["closing"].pop(s, None)
-        why = closing or {"stop": f"stop (−%{C.OV_STOP*100:g})", "limit": "kâr al"}.get(
-            (sell or {}).get("type")) or "piyasa emriyle kapandı (elle?)"
-        fd, ft = _ts(sell)
+        why = closing or {"stop": f"stop (dibin %{C.TB_STOP_BELOW*100:g} altı – dip kırıldı)",
+                          "limit": f"kâr al (+%{C.TB_TP*100:g})"}.get((last or {}).get("type")) \
+            or "piyasa emriyle kapandı (elle?)"
+        fd, ft = _ts(last)
         e = info["entry"]
-        qty = _num((sell or {}).get("filled_qty"))
         pl = (px - e) * qty if px else None
         kayit.add_event(tarih=fd, saat=ft, sembol=s, islem="SATIŞ", adet=qty or None,
                         fiyat=round(px, 2) if px else None, neden=why, strateji=STRAT,
-                        emir_id=(sell or {}).get("client_order_id"), anahtar=f"satis-{(sell or {}).get('id', s + fd)}")
+                        emir_id=(last or {}).get("client_order_id"), anahtar=f"satis-{(last or {}).get('id', s + fd)}")
         kayit.upsert_signal(info["key"], durum="kapandı", cikis_tarihi=fd, cikis_saati=ft,
                             cikis_fiyati=round(px, 2) if px else None, cikis_nedeni=why,
                             kar_zarar_usd=round(pl, 2) if pl is not None else None,
                             kar_zarar_yuzde=round((px / e - 1) * 100, 2) if px else None,
-                            tutma_seans=info["sessions"], en_yuksek_yuzde=round((info["hi"] / e - 1) * 100, 2),
+                            tutma_seans=info.get("posts"), en_yuksek_yuzde=round((info["hi"] / e - 1) * 100, 2),
                             en_dusuk_yuzde=round((info["lo"] / e - 1) * 100, 2))
         notes.append(f"⚪ {s} (orta vade) kapandı · {why}" + (f" · {pl:+,.2f}$" if pl is not None else ""))
 
-    # 4) Stop: gerçek alış fiyatına göre (iz süren modda yalnız yukarı); stop emri yoksa kur
+    # 4) Koruma: tüm parçaların stopu aynı (dibin altı), kâr al ortalama maliyete göre; korunmayan adet varsa OCO kur
     for s, p in held.items():
         info = vs["held"].get(s) or {}
         if s in vs["closing"]:
             continue
-        want = info.get("stop") or round(_num(p["avg_entry_price"]) * (1 - C.OV_STOP), 2)
-        if C.OV_TP:
-            tp = round(_num(p["avg_entry_price"]) * (1 + C.OV_TP), 2)
-            for o in orders:
-                if (o["symbol"] == s and o["side"] == "sell" and o.get("type") == "limit"
-                        and abs(_num(o.get("limit_price")) - tp) > 0.011):
-                    try:
-                        api.replace_limit(o["id"], tp)
-                    except RuntimeError as ex:
-                        print(ex)
-        stops = [o for o in orders if o["symbol"] == s and o["side"] == "sell" and o.get("type") == "stop"]
-        for o in stops:
-            if abs(_num(o.get("stop_price")) - want) > 0.011:
-                try:
-                    api.replace_stop(o["id"], want)
-                except RuntimeError as ex:
-                    print(ex)
-        if not stops:
+        e = _num(p["avg_entry_price"])
+        bottom = info.get("bottom") or ((by.get(s) or {}).get("ov") or {}).get("bottom")
+        stop = round(bottom * (1 - C.TB_STOP_BELOW), 2) if bottom else round(e * 0.85, 2)
+        tp = round(e * (1 + C.TB_TP), 2)
+        sells = [o for o in orders if o["symbol"] == s and o["side"] == "sell"]
+        for o in sells:
             try:
-                api.stop_sell(s, abs(int(float(p["qty"]))), want, f"ov-stop-{s}-{datetime.now():%m%d%H%M}")
-                notes.append(f"🛡 {s} (orta vade) stop emri yoktu, kuruldu @ ${want:,.2f}")
+                if o.get("type") == "stop" and abs(_num(o.get("stop_price")) - stop) > 0.011:
+                    api.replace_stop(o["id"], stop)
+                elif o.get("type") == "limit" and abs(_num(o.get("limit_price")) - tp) > 0.011:
+                    api.replace_limit(o["id"], tp)
             except RuntimeError as ex:
-                notes.append(f"⚠️ {s} stop kurulamadı: {ex}")
+                print(ex)
+        covered = sum(_num(o.get("qty")) - _num(o.get("filled_qty")) for o in sells if o.get("type") == "stop")
+        missing = int(_num(p["qty"]) - covered)
+        if missing >= 1:
+            try:
+                api.oco_sell(s, missing, tp, stop, f"ov-oco-{s}-{datetime.now():%m%d%H%M}")
+                notes.append(f"🛡 {s} (orta vade) {missing} adet korumasızdı, stop ${stop:,.2f} / kâr al ${tp:,.2f} kuruldu")
+            except RuntimeError as ex:
+                notes.append(f"⚠️ {s} koruma emri kurulamadı: {ex}")
 
     def _done():
         vs["notes"].setdefault(day, []).extend(notes)
@@ -223,7 +214,7 @@ def run(summary, by, mode, state, api, pocket, cash, tag):
         return _done()
     state["sent"][key] = day
 
-    # 5) Dolmayan alışlar OV_ENTRY_SESSIONS seans sonra iptal
+    # 5) Dolmayan alışlar 1 seans sonra iptal
     for s, o in pend_orders.items():
         pd_ = vs["pending"].setdefault(s, {"since": day, "sessions": 0, "key": f"ov-{day}-{s}"})
         pd_["sessions"] += 1
@@ -232,34 +223,37 @@ def run(summary, by, mode, state, api, pocket, cash, tag):
                 api.cancel(o["id"])
                 vs["pending"].pop(s, None)
                 kayit.add_event(sembol=s, islem="İPTAL", adet=o.get("qty"), fiyat=o.get("limit_price"),
-                                neden="orta vade limitli alış dolmadı (fiyat kaçtı)", strateji=STRAT,
+                                neden=f"orta vade {pd_.get('part', 1)}. parça limitli alış dolmadı", strateji=STRAT,
                                 emir_id=o.get("client_order_id"), anahtar=f"iptal-{o['id']}")
-                kayit.upsert_signal(pd_["key"], durum="iptal (dolmadı)")
-                notes.append(f"⏹ {s} orta vade alış emri dolmadı, iptal edildi")
+                if s not in held:
+                    kayit.upsert_signal(pd_["key"], durum="iptal (dolmadı)")
+                notes.append(f"⏹ {s} orta vade {pd_.get('part', 1)}. parça alışı dolmadı, iptal edildi")
             except RuntimeError as ex:
                 print(ex)
+    pend_orders = {s: o for s, o in pend_orders.items() if s in vs["pending"]}
     for s in list(vs["pending"]):
-        if s not in pend_orders and s not in held:
+        if s not in pend_orders:
             vs["pending"].pop(s, None)
 
-    # 6) Çıkış kuralları (kapanışa göre; satış ertesi açılışta) + iz süren stop
+    # 6) Elde olanlar: süre, İslami filtre, sonraki parça (ilk alıştan g seans sonra, hâlâ dipte/yataydaysa)
+    room = max(cash, 0.0) * 0.98
+    placed = []
     for s, info in vs["held"].items():
-        info["sessions"] += 1
-        if s in vs["closing"] or s not in held:
+        if s not in held or s in vs["closing"]:
             continue
+        day_n = info["posts"]               # ilk alış günü kapanışı = 0
+        info["posts"] += 1
         st = by.get(s) or {}
         snap = st.get("ov") or {}
-        if snap.get("close"):
-            info["hic"] = max(info.get("hic", 0), snap["close"])
-        why = exit_reason(snap, info)
-        if not why and info["sessions"] >= C.OV_MAX_DAYS:
-            why = f"süre doldu ({C.OV_MAX_DAYS} seans)"
         shr = st.get("sharia") or {}
-        if not why and C.SHARIA_FILTER and C.SHARIA_SELL_IF_FAILS and shr and not shr.get("ok", True) and shr.get("hard"):
+        why = None
+        if day_n >= C.TB_MAX_DAYS:
+            why = f"süre doldu ({C.TB_MAX_DAYS} seans)"
+        elif C.SHARIA_FILTER and C.SHARIA_SELL_IF_FAILS and shr and not shr.get("ok", True) and shr.get("hard"):
             why = f"İslami filtreden çıktı ({shr.get('reason')})"
         if why:
             for o in orders:
-                if o["symbol"] == s and o["side"] == "sell":
+                if o["symbol"] == s:
                     try:
                         api.cancel(o["id"])
                     except RuntimeError as ex:
@@ -271,59 +265,77 @@ def run(summary, by, mode, state, api, pocket, cash, tag):
             except RuntimeError as ex:
                 notes.append(f"⚠️ {s} kapatılamadı: {ex}")
             continue
-        if C.OV_EXIT == "atr" and snap.get("atr"):
-            new = round(info["hic"] - C.OV_TRAIL_ATR * snap["atr"], 2)
-            if new > info.get("stop", 0):
-                info["stop"] = new
-                notes.append(f"⬆️ {s} (orta vade) iz süren stop ${new:,.2f}")
+        if (day_n in C.TB_TRANCHES[1:] and info["parts"] < n_parts() and snap.get("signal")
+                and s not in pend_orders):
+            part = info["parts"] + 1
+            lim = snap["limit"]
+            qty = math.floor(min(info["budget"] / n_parts(), room) / lim)
+            if qty < 1:
+                notes.append(f"⚠️ {s} {part}. parça için nakit yok")
+                continue
+            stop = round((info.get("bottom") or snap["bottom"]) * (1 - C.TB_STOP_BELOW), 2)
+            tp = round(info["entry"] * (1 + C.TB_TP), 2)
+            cid = f"{TAG_PREFIX}{day}-{s}-{part}"
+            try:
+                api.bracket_buy(s, qty, lim, stop, tp, cid)
+            except RuntimeError as ex:
+                notes.append(f"⚠️ {s} {part}. parça emri verilemedi: {ex}")
+                continue
+            room -= qty * lim
+            vs["pending"][s] = {"since": day, "sessions": 0, "limit": lim, "key": info["key"], "qty": qty, "part": part}
+            why_ = why_text(snap, part)
+            kayit.add_event(sembol=s, islem="EMİR", adet=qty, fiyat=lim, neden=why_, strateji=STRAT, emir_id=cid,
+                            anahtar=f"emir-{cid}")
+            placed.append(f"• <b>{s}</b> {part}/{n_parts()}. parça · {qty} adet @ ${lim:,.2f} (≈${qty*lim:,.0f})\n"
+                          f"   Stop ${stop:,.2f} (dibin %{C.TB_STOP_BELOW*100:g} altı) · Kâr al ≈${tp:,.2f}\n   Neden: {why_}")
+            notes.append(f"📥 {s} orta vade {part}. parça emri girildi @ ${lim:,.2f}")
 
-    # 7) Yeni sinyaller -> limitli alış + bağlı stop
-    open_pend = {s for s in pend_orders if s in vs["pending"]}
-    slots = C.OV_MAX_POSITIONS - len(held) - len(open_pend)
+    # 7) Yeni pozisyonlar: ilk parça
+    open_new = {s for s in vs["pending"] if s not in held}
+    slots = C.OV_MAX_POSITIONS - len(held) - len(open_new)
     cands = candidates(summary)
     any_pend = {o["symbol"] for o in orders if o["side"] == "buy"}
-    room = max(cash, 0.0) * 0.98
-    placed = []
+    budget = pocket / C.OV_MAX_POSITIONS
     for rank, s in enumerate(cands, 1):
         t = s["t"]
         skey = f"ov-{day}-{t}"
-        ctx = _context(s, rank, len(cands), summary)
-        if t in positions or t in any_pend:
-            kayit.upsert_signal(skey, durum="atlandı (zaten elde/emirde)", **ctx)
+        if t in positions or t in any_pend or t in vs["pending"]:
             continue
+        ctx = _context(s, rank, len(cands), summary)
         if slots <= 0:
             kayit.upsert_signal(skey, durum=f"atlandı ({C.OV_MAX_POSITIONS} orta vade pozisyonu dolu)", **ctx)
             notes.append(f"ℹ️ {t} orta vade sinyali verdi ama {C.OV_MAX_POSITIONS} pozisyon dolu")
             continue
-        lim = s["ov"]["limit"]
-        qty = math.floor(min(pocket / C.OV_MAX_POSITIONS, room) / lim)
+        o = s["ov"]
+        lim = o["limit"]
+        qty = math.floor(min(budget / n_parts(), room) / lim)
         if qty < 1:
             kayit.upsert_signal(skey, durum="atlandı (nakit yok)", **ctx)
             notes.append(f"⚠️ {t} orta vade sinyali verdi ama yeterli nakit yok")
             continue
-        stop = round(lim * (1 - C.OV_STOP), 2)
-        tp = round(lim * (1 + C.OV_TP), 2) if C.OV_TP else None
-        cid = f"{TAG_PREFIX}{day}-{t}"
-        why = why_text(s["ov"])
+        stop = o["stop"]
+        tp = round(lim * (1 + C.TB_TP), 2)
+        cid = f"{TAG_PREFIX}{day}-{t}-1"
+        why_ = why_text(o, 1)
         try:
             api.bracket_buy(t, qty, lim, stop, tp, cid)
         except RuntimeError as ex:
             kayit.upsert_signal(skey, durum=f"emir hatası: {str(ex)[:80]}", **ctx)
             notes.append(f"⚠️ {t} orta vade alış emri verilemedi: {ex}")
             continue
-        vs["pending"][t] = {"since": day, "sessions": 0, "limit": lim, "key": skey, "qty": qty}
+        vs["pending"][t] = {"since": day, "sessions": 0, "limit": lim, "key": skey, "qty": qty, "part": 1,
+                            "bottom": o["bottom"], "budget": budget}
         slots -= 1
         room -= qty * lim
         kayit.upsert_signal(skey, durum="emir verildi", adet=qty, stop=stop, kar_al=tp, **ctx)
-        kayit.add_event(sembol=t, islem="EMİR", adet=qty, fiyat=lim, neden=why, strateji=STRAT, emir_id=cid,
+        kayit.add_event(sembol=t, islem="EMİR", adet=qty, fiyat=lim, neden=why_, strateji=STRAT, emir_id=cid,
                         anahtar=f"emir-{cid}")
-        exit_txt = {"yok": "", "sma50": "kapanış 50 g ortalamanın altına inince", "sma150": "kapanış 150 g ortalamanın altına inince",
-                    "atr": f"iz süren stop ({C.OV_TRAIL_ATR:g} ATR)"}.get(C.OV_EXIT, "")
-        placed.append(f"• <b>{t}</b> {qty} adet @ ${lim:,.2f} (≈${qty*lim:,.0f})\n"
-                      f"   Stop ${stop:,.2f} (−%{C.OV_STOP*100:g})" + (f" · Kâr al ${tp:,.2f}" if tp else "")
-                      + (f" · Satış: {exit_txt}" if exit_txt else "") + "\n"
-                      f"   Neden: {why}")
-        notes.append(f"📥 {t} orta vade limitli alış emri girildi @ ${lim:,.2f}")
+        nxt = " ve ".join(f"{g}." for g in C.TB_TRANCHES[1:])
+        placed.append(f"• <b>{t}</b> 1/{n_parts()}. parça · {qty} adet @ ${lim:,.2f} (≈${qty*lim:,.0f})\n"
+                      f"   Stop ${stop:,.2f} (dibin %{C.TB_STOP_BELOW*100:g} altı) · Kâr al ${tp:,.2f} (+%{C.TB_TP*100:g})\n"
+                      + (f"   Sonraki parçalar: {nxt} seansta, hâlâ dipte/yataydaysa\n" if nxt else "")
+                      + f"   Neden: {why_}")
+        notes.append(f"📥 {t} orta vade 1. parça emri girildi @ ${lim:,.2f}")
     if placed:
         alerts.append(f"📈 <b>Orta vade – emir giriyorum</b> ({tag}) – {day} kapanışına göre:\n" + "\n".join(placed))
     return _done()

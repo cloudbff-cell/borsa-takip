@@ -69,14 +69,16 @@ cd site && python -m http.server       # http://localhost:8000
 - **Neden:** 2017-2026 testinde (`tools/down3_analiz.py`) kapanışta almak −%2 stopla kârsızdı. Sinyalden sonra fiyat ortalama %2,8 daha düşüyor ve dip çoğunlukla ertesi gün geliyor. %2 aşağıdan alınca −%2/+%2 kuralıyla yıllık +%21,9 (3 pozisyon), en büyük düşüş −%6; üç alt dönemin hepsinde kârlı. Günlük veride aynı gün hem stop hem hedef görülen işlemler stop sayıldı; hisse listesi bugünün büyükleri olduğu için sonuçlar biraz iyimser.
 - **Eski strateji:** puan + AL sinyali + iz süren stop kuralı yeni alım yapmaz. Eldeki eski pozisyonlar kendi stoplarıyla kapanana kadar korunur. Geri dönmek için `config.py` → `STRATEGY = "eski"`.
 
-## Orta vade stratejisi: evre 2 + 3 aylık taban kırılımı (`engine/ortavade.py`, kurallar `engine/ortavade_kural.py`)
-Bir hissenin dört evresi: **taban → yükseliş (evre 2) → tepe → düşüş**. Alım yalnız yükseliş evresinin başında yapılır; tepe ve düşüş evresinde alım yok.
-- **1 yıllık grafik (evre 2 teyidi):** fiyat 150 ve 200 günlük ortalamanın üstünde, 150 g ortalama son 1 ayda yükselmiş, 50 g > 150 g, fiyat 52 hafta dibinin en az %25 üstünde ve zirvesinin en çok %25 altında. Fiyat 150 g ortalamanın %40'tan fazla üstündeyse alınmaz (geç kalınmış, tepeye yakın).
-- **3 aylık grafik (giriş):** son 3 ayın tabanı en fazla %25 derinlikte ve bugün kapanış bu tabanın zirvesinin üstünde, hacim 50 günlük ortalamanın ≥ 1,3 katı. Piyasa filtresi: SPY 200 g ortalamanın üstünde.
-- **Alış:** kapanıştan sonra, ertesi seans için kapanışın en çok %1 üstüne limitli alış (fiyat boşlukla kaçarsa kovalanmaz, emir iptal). Emre bağlı −%8 stop ve +%25 kâr al. En fazla ~1 yıl (252 seans) tutulur.
-- **Boyut:** sermayenin %50'si orta vadeye (`OV_ALLOC`), 4 eşit pozisyon; kısa vade (3 gün düşüş) kalan %50 ile çalışmaya devam eder. Emir kimliği `ov-`; iki strateji birbirinin pozisyonuna dokunmaz, aynı hisseye iki kez girmez.
-- **Test (`tools/ortavade_test.py`, Actions → *Orta vade geri testi*, 2017-12 – 2026-11, günlük piyasa değerli portföy):** yıllık +%16,1, en büyük düşüş −%18,6, kazanma %47, ortalama işlem +%6,7, ortalama ~80 gün (SPY al-tut +%13,6 / −%33,7). Üç alt dönemin hepsinde pozitif ama 2017-19 ve 2023-26'da SPY'ın gerisinde; asıl fark düşük düşüş (2022'de +%9, SPY −%18). **Uyarı:** aynı kurallar daha geniş 117 hisselik İslami evrende yıllık +%7,4 verdi; ilk 50 bugünün kazananları olduğu için sonuç iyimserdir.
-- Kapatmak için `config.py` → `OV_ENABLED = False`.
+## Orta vade stratejisi: düşüş sonrası dipte yatay + kademeli alım (`engine/ortavade.py`)
+Grafikte: yükseliş → tepe → sert düşüş → **dipte yatay**. Alım düşüş durup fiyat dipte yatay gitmeye başlayınca yapılır.
+- **Evren:** İslami filtreden geçen ilk 50.
+- **1 yıllık grafik:** tepeden önce dipten tepeye en az %40 yükseliş; tepeden dibe en az %25 düşüş.
+- **3 aylık grafik:** düşüşün dibinden sonra en az **3 seans** yeni dip yok ve fiyat dibin en çok %10 üstünde → takip başlar.
+- **Kademeli alım (3 parça):** 1. parça sinyal günü kapanışından sonra; 2. ve 3. parça ilk alıştan 3. ve 6. seansta, fiyat hâlâ dipte/yataydaysa. Her parça ertesi seans kapanışın en çok %1 üstüne limitle (1 seans geçerli). Fiyat dipten uzaklaştıysa kalan parçalar alınmaz.
+- **Satış:** stop dibin %10 altı (dip kırılırsa hepsi satılır), kâr al ortalama maliyetin +%30'u, en fazla ~1 yıl, İslami filtreden çıkarsa satış.
+- **Boyut:** sermayenin %50'si orta vadeye (`OV_ALLOC`), 5 pozisyon bütçesi; her parça bütçenin 1/3'ü. Kısa vade (3 gün düşüş) kalan %50 ile aynen çalışır. Emir kimliği `ov-`.
+- **Test (`tools/taban_test.py`, 2017-12 – 2026-11):** 112 pozisyon, %54'ü kârlı, pozisyon başı ort. +%8,7, yıllık +%12,1, en büyük düşüş −%23,2 (SPY al-tut +%13,6 / −%33,7). Pozisyonlar ortalama 1,8 parça doldu: fiyat çabuk yükselince kalan parçalar alınmıyor, bu yüzden tek seferde almak daha çok kazandırdı (yıllık +%19,9) ama düşüşü de büyüttü (−%32,6). Evren bugünün büyük şirketleri olduğu için sonuçlar iyimserdir.
+- Ayarlar `config.py` → `TB_*` ve `OV_*`; kapatmak için `OV_ENABLED = False`.
 
 ## Bildirimler ve işlem günlüğü
 - **Telegram (`TELEGRAM_MODE = "rapor"`):** yalnız iki tür mesaj gelir: (1) bot limitli alış emri girerken anlık "📥 Emir giriyorum" mesajı (hisse, adet, limit, stop, kâr al, neden); (2) kapanıştan sonra tek **gün sonu raporu**: bugün alınanlar, kapananlar (neden ve K/Z), iptal edilen emirler, açık pozisyonlar ve her biri için ne beklendiği (kâr al / stop seviyesi ve uzaklığı, süre), bekleyen limitli alışlar, başlangıçtan beri getiri.

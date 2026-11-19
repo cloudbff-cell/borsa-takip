@@ -186,7 +186,7 @@ def build(mode: str, now_ny: datetime, prices=None, fund=None, monthly=None, ext
             "fund": fv, "season": sea,
             "sharia": sh.get(t) or {"ok": False, "reason": "veri yok", "hard": False},
             "dip": dip.signal_view(df),
-            "ov": OVK.snapshot(df) if C.OV_ENABLED else {"signal": False},
+            "ov": OVK.snapshot_taban(df) if C.OV_ENABLED else {"signal": False},
         })
         (SITE / "data" / "c" / f"{t}.json").write_text(json.dumps(chart_payload(df, sig, evs), separators=(",", ":")))
 
@@ -385,6 +385,7 @@ def portfolio_message(p, state):
 
 def daily_report(summary, portfolio, state):
     """Gün sonu raporu: bugün alınan/kapanan/iptal, açık pozisyonlar ve ne beklendiği, bekleyen emirler."""
+    by_ = {s["t"]: s for s in summary.get("stocks", [])}
     day = summary["lastBar"]
     p = portfolio or {}
     st = kayit.start_info()
@@ -429,8 +430,8 @@ def daily_report(summary, portfolio, state):
                     wait.append(f"kâr al ${x['tp']:,.2f} ({(x['tp'] / x['price'] - 1) * 100:+.1f}% uzakta)")
                 if x.get("stop"):
                     wait.append(f"stop ${x['stop']:,.2f} ({(x['stop'] / x['price'] - 1) * 100:+.1f}% uzakta)")
-                L.append(f"• <b>{x['sym']}</b> 📈 orta vade · {x['qty']} adet · ${x['entry']:,.2f} → ${x['price']:,.2f} · "
-                         f"{x['pl']:+,.2f}$ ({x['plpc']:+.2f}%) · {h.get('sessions', 0)}. seans"
+                L.append(f"• <b>{x['sym']}</b> 📈 orta vade {h.get('parts', '?')}/{len(C.TB_TRANCHES)} parça · {x['qty']} adet · ${x['entry']:,.2f} → ${x['price']:,.2f} · "
+                         f"{x['pl']:+,.2f}$ ({x['plpc']:+.2f}%) · {h.get('posts', 0)}. seans"
                          + ("\n   Bekleniyor: " + " ya da ".join(wait) if wait else ""))
                 continue
             h = (ds.get("held") or {}).get(x["sym"], {})
@@ -457,12 +458,12 @@ def daily_report(summary, portfolio, state):
     if ovp:
         L.append("\n⏳ <b>Bekleyen orta vade alışları</b>")
         for s_, v in ovp.items():
-            L.append(f"• {s_} @ ${v.get('limit', 0):,.2f} · yarınki seansta bu fiyat ya da altından alınacak, yoksa iptal")
+            L.append(f"• {s_} {v.get('part', 1)}. parça @ ${v.get('limit', 0):,.2f} · yarınki seansta bu fiyat ya da "
+                     "altından alınacak, yoksa iptal")
     if C.OV_ENABLED:
         ovs = summary.get("ovSignals") or []
-        mk = (summary.get("benchmark") or {}).get("above200")
-        L.append("\n📈 Orta vade (evre 2 + 3 aylık taban kırılımı) sinyali: " + (", ".join(ovs) or "yok")
-                 + (" · SPY 200 g ortalamanın altında, yeni orta vade alımı yok" if C.OV_MARKET_FILTER and mk is False else ""))
+        L.append("\n📈 Orta vade (düşüş sonrası dipte yatay) sinyali: " + (", ".join(
+            f"{t} (dip ${by_[t]['ov']['bottom']:,.2f}, {by_[t]['ov']['flat']} seans yatay)" for t in ovs if t in by_) or "yok"))
     if orders:
         L.append("\n📥 Bu akşam girilen emirler: " + ", ".join(f"{e['sembol']} @ ${float(e['fiyat']):,.2f}" for e in orders))
     else:

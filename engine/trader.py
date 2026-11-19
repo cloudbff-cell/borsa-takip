@@ -118,6 +118,13 @@ class Alpaca:
             body["order_class"] = "oto"
         return self._r("POST", "/v2/orders", json=body)
 
+    def oco_sell(self, sym, qty, tp, stop, client_id):
+        """Eldeki adet için kâr al + stop (biri olunca diğeri iptal), GTC."""
+        return self._r("POST", "/v2/orders", json={
+            "symbol": sym, "qty": str(qty), "side": "sell", "type": "limit", "time_in_force": "gtc",
+            "order_class": "oco", "client_order_id": client_id, "take_profit": {"limit_price": f"{tp:.2f}"},
+            "stop_loss": {"stop_price": f"{stop:.2f}"}})
+
     def stop_sell(self, sym, qty, stop, client_id):
         """Bağımsız koruyucu stop satış emri (GTC)."""
         return self._r("POST", "/v2/orders", json={
