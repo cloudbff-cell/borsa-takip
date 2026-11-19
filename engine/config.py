@@ -137,12 +137,15 @@ OV_MAX_DAYS = 252            # en fazla ~1 yıl tutulur
 OV_EXIT = "yok"              # ek çıkış: "yok", "sma50" (kapanış 50 g altı), "sma150" (150 g altı), "atr" (iz süren)
 OV_TRAIL_ATR = 3.0           # OV_EXIT="atr" ise: girişten beri en yüksek kapanış - 3 ATR
 OV_EXIT_BUFFER = 0.0         # ortalamanın altına bu kadar % inmeden satma (gürültü payı)
-# 'Düşüş sonrası yatay taban' kuralı (ortavade_kural.features_taban)
-TB_MIN_RISE = 0.40           # tepeden önce dipten tepeye en az %40 yükseliş (1 yıllık grafik)
-TB_MIN_DROP = 0.25           # tepeden en az %25 düşmüş
-TB_SIDE_DAYS = 40            # yatay bant: son 40 seans (~2 ay, 3 aylık grafikte)
-TB_MAX_RANGE = 0.15          # bant genişliği en fazla %15
-TB_ENTRY = "yatay"           # "yatay": yatay sürerken bandın alt yarısında · "kirilim": bandın üstüne çıkışta
+# Orta vade kuralı (kullanıcı): 'düşüş sonrası dipte yatay' + kademeli alım (ortavade_kural.features_taban)
+TB_MIN_RISE = 0.40           # 1 yıllık grafik: tepeden önce dipten tepeye en az %40 yükseliş
+TB_MIN_DROP = 0.25           # tepeden dibe en az %25 düşüş
+TB_MIN_FLAT = 3              # dipten sonra en az 3 seans yeni dip yok -> yatay başladı, takip başlar
+TB_NEAR = 0.10               # fiyat dibin en çok %10 üstünde (hâlâ dipte/yatayda)
+TB_TRANCHES = [0, 5, 10]     # kademeli alım: ilk parça sinyalde, sonra 5. ve 10. seansta (hâlâ yataydaysa)
+TB_STOP_BELOW = 0.05         # stop: düşüşün dibinin %5 altı (dip kırılırsa yatay bitti, çık)
+TB_TP = 0.30                 # kâr al: ortalama maliyetin %30 üstü
+TB_MAX_DAYS = 252            # en fazla ~1 yıl
 
 # ---------- Otomatik işlem (Alpaca) ----------
 # Bot yalnızca TRADING_ENABLED=true ortam değişkeni varsa emir verir.
