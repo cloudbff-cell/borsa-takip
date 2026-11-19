@@ -24,6 +24,7 @@ from zoneinfo import ZoneInfo
 from . import config as C
 from . import data as D
 from . import dip
+from . import ortavade
 from . import kayit
 
 STATUS = {}
@@ -358,7 +359,10 @@ def run(summary, by, mode, state, client=None):
     dt_syms = day_symbols(api)
     # Yeni ana strateji (dip.py) kendi 'dip-' pozisyonlarını yönetir; buradaki eski kurallar onlara dokunmaz
     dip_syms = dip.dip_symbols(api) if C.STRATEGY == "dip" else set()
-    skip = dt_syms | dip_syms
+    # Orta vade (ov-) pozisyonlarını ortavade.py yönetir
+    ov_syms = ortavade.ov_symbols(api) if C.OV_ENABLED else set()
+    dip_syms -= ov_syms
+    skip = dt_syms | dip_syms | ov_syms
     all_pos = {p["symbol"]: p for p in api.positions()
                if p.get("asset_class", "us_equity") != "crypto" and p["symbol"] not in dt_syms}
     all_orders = [o for o in api.open_orders()
@@ -448,7 +452,8 @@ def run(summary, by, mode, state, client=None):
                                 "plpc": float(v["unrealized_plpc"]) * 100,
                                 "value": float(v.get("market_value") or 0),
                                 "stop": _lvl(k, "stop"), "tp": _lvl(k, "tp"),
-                                "strategy": "3 gün düşüş" if k in dip_syms else "eski"} for k, v in all_pos.items()]}
+                                "strategy": "orta vade" if k in ov_syms else "3 gün düşüş" if k in dip_syms else "eski"}
+                               for k, v in all_pos.items()]}
     if C.STRATEGY == "dip":
         # Eski giriş kuralı kapalı: eldeki eski pozisyonlar kendi stoplarıyla kapanana kadar yönetilir.
         # Anlık bildirim yalnız emir girerken (ve sıfırlamada); diğer her şey gün sonu raporuna not olarak gider.
@@ -457,8 +462,17 @@ def run(summary, by, mode, state, client=None):
         alerts = [m for m in (reset_msg, legacy_alert) if m]
         if mode in ("intraday", "post") and not reset_msg:
             cash = min(float(acct.get("cash", 0) or 0), bp) if C.NO_MARGIN else bp
-            a, _ = dip.run(summary, by, mode, state, api, equity, cash, tag)
+            ov_pocket = equity * C.OV_ALLOC if C.OV_ENABLED else 0.0
+            a, _ = dip.run(summary, by, mode, state, api, equity - ov_pocket, cash, tag)
             alerts += a
+            if C.OV_ENABLED:
+                try:
+                    acct2 = api.account()       # kısa vade emirlerinden sonra kalan nakit
+                    cash2 = min(float(acct2.get("cash", 0) or 0), float(acct2.get("buying_power", 0) or 0))
+                except (RuntimeError, KeyError, TypeError, ValueError):
+                    cash2 = cash
+                a, _ = ortavade.run(summary, by, mode, state, api, ov_pocket, cash2, tag)
+                alerts += a
         if msgs:
             state.setdefault("dip", {}).setdefault("notes", {}).setdefault(today, []).extend(
                 re.sub("<[^>]+>", "", m) for m in msgs)

@@ -24,7 +24,8 @@ SIG_COLS = ["anahtar", "sinyal_tarihi", "sembol", "sirket", "sektor", "strateji"
             "puan", "piyasa_degeri_mr", "borc_orani", "nakit_orani", "spy_trend", "spy_gun_yuzde", "sira",
             "ayni_gun_sinyal", "adet", "alis_tarihi", "alis_saati", "alis_fiyati", "stop", "kar_al",
             "cikis_tarihi", "cikis_saati", "cikis_fiyati", "cikis_nedeni", "kar_zarar_usd", "kar_zarar_yuzde",
-            "tutma_seans", "en_yuksek_yuzde", "en_dusuk_yuzde"]
+            "tutma_seans", "en_yuksek_yuzde", "en_dusuk_yuzde",
+            "giris_turu", "evre", "taban_derinlik_yuzde", "sma150_uzaklik_yuzde", "getiri_3a_yuzde"]
 EVT_COLS = ["tarih", "saat", "sembol", "islem", "adet", "fiyat", "tutar", "neden", "strateji", "emir_id", "anahtar"]
 
 

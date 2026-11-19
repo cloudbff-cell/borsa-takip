@@ -22,6 +22,7 @@ from . import crypto
 from . import sharia
 from . import daytrade
 from . import dip
+from . import ortavade_kural as OVK
 from . import kayit
 from .analysis import fundamental_view, revision_view, seasonality, volume_view
 from .indicators import add_indicators
@@ -185,6 +186,7 @@ def build(mode: str, now_ny: datetime, prices=None, fund=None, monthly=None, ext
             "fund": fv, "season": sea,
             "sharia": sh.get(t) or {"ok": False, "reason": "veri yok", "hard": False},
             "dip": dip.signal_view(df),
+            "ov": OVK.snapshot(df) if C.OV_ENABLED else {"signal": False},
         })
         (SITE / "data" / "c" / f"{t}.json").write_text(json.dumps(chart_payload(df, sig, evs), separators=(",", ":")))
 
@@ -225,11 +227,14 @@ def build(mode: str, now_ny: datetime, prices=None, fund=None, monthly=None, ext
         "marketOpenToday": bool(market_open_today), "lastBar": bench.index[-1].strftime("%Y-%m-%d") if bench is not None else None,
         "benchmark": {"t": C.BENCHMARK, "price": r2(bench["Close"].iloc[-1]) if bench is not None else None,
                       "chg": r2((bench["Close"].iloc[-1] / bench["Close"].iloc[-2] - 1) * 100) if bench is not None else None,
-                      "trend": compute_signals(add_indicators(bench)).iloc[-1]["trend"] if bench is not None else None},
+                      "trend": compute_signals(add_indicators(bench)).iloc[-1]["trend"] if bench is not None else None,
+                      "above200": bool(bench["Close"].iloc[-1] > bench["Close"].tail(200).mean()) if bench is not None else None},
         "top": top, "leaders": {C.SECTOR_TR.get(k, k): v for k, v in leaders.items()},
         "picks": [s["t"] for s in picks], "warnings": [s["t"] for s in warnings],
         "dipSignals": [s["t"] for s in sorted(stocks, key=lambda s: s["dip"].get("drop3", 0))
                        if s["isTop"] and s["dip"].get("signal") and s["sharia"]["ok"]],
+        "ovSignals": [s["t"] for s in sorted(stocks, key=lambda s: -(s["ov"].get("ret63") or -999))
+                      if s["isTop"] and s["ov"].get("signal") and s["sharia"]["ok"]],
         "seasonal": [s["t"] for s in seasonal], "seasonalNext": [s["t"] for s in seasonal_next],
         "earnings": [s["t"] for s in earn], "stats": stats, "signalDefs": SIGNALS,
         "sharia": {"enabled": C.SHARIA_FILTER, "debtMax": C.SHARIA_DEBT_MAX, "cashMax": C.SHARIA_CASH_MAX,
@@ -415,7 +420,19 @@ def daily_report(summary, portfolio, state):
     L.append("\n📈 <b>Açık pozisyonlar ve beklenen</b>")
     pos = p.get("positions") or []
     if pos:
+        ovh = (state.get("ov") or {}).get("held") or {}
         for x in pos:
+            if x["sym"] in ovh or x.get("strategy") == "orta vade":
+                h = ovh.get(x["sym"], {})
+                wait = []
+                if x.get("tp"):
+                    wait.append(f"kâr al ${x['tp']:,.2f} ({(x['tp'] / x['price'] - 1) * 100:+.1f}% uzakta)")
+                if x.get("stop"):
+                    wait.append(f"stop ${x['stop']:,.2f} ({(x['stop'] / x['price'] - 1) * 100:+.1f}% uzakta)")
+                L.append(f"• <b>{x['sym']}</b> 📈 orta vade · {x['qty']} adet · ${x['entry']:,.2f} → ${x['price']:,.2f} · "
+                         f"{x['pl']:+,.2f}$ ({x['plpc']:+.2f}%) · {h.get('sessions', 0)}. seans"
+                         + ("\n   Bekleniyor: " + " ya da ".join(wait) if wait else ""))
+                continue
             h = (ds.get("held") or {}).get(x["sym"], {})
             left = C.DIP_MAX_DAYS - h.get("sessions", 0) if h else None
             wait = []
@@ -436,11 +453,22 @@ def daily_report(summary, portfolio, state):
         for s, v in pend.items():
             L.append(f"• {s} @ ${v.get('limit', 0):,.2f} · fiyat bu seviyeye inerse alınacak · "
                      f"{C.DIP_ENTRY_SESSIONS - v.get('sessions', 0)} seans daha geçerli")
+    ovp = (state.get("ov") or {}).get("pending") or {}
+    if ovp:
+        L.append("\n⏳ <b>Bekleyen orta vade alışları</b>")
+        for s_, v in ovp.items():
+            L.append(f"• {s_} @ ${v.get('limit', 0):,.2f} · yarınki seansta bu fiyat ya da altından alınacak, yoksa iptal")
+    if C.OV_ENABLED:
+        ovs = summary.get("ovSignals") or []
+        mk = (summary.get("benchmark") or {}).get("above200")
+        L.append("\n📈 Orta vade (evre 2 + 3 aylık taban kırılımı) sinyali: " + (", ".join(ovs) or "yok")
+                 + (" · SPY 200 g ortalamanın altında, yeni orta vade alımı yok" if C.OV_MARKET_FILTER and mk is False else ""))
     if orders:
         L.append("\n📥 Bu akşam girilen emirler: " + ", ".join(f"{e['sembol']} @ ${float(e['fiyat']):,.2f}" for e in orders))
     else:
         L.append("\n📥 Bu akşam yeni sinyal yok; emir girilmedi.")
-    notes = [n for n in (ds.get("notes") or {}).get(day, []) if n.startswith(("⚠️", "🛡", "ℹ️", "🔔"))]
+    notes = [n for n in (ds.get("notes") or {}).get(day, []) + ((state.get("ov") or {}).get("notes") or {}).get(day, [])
+             if n.startswith(("⚠️", "🛡", "ℹ️", "🔔"))]
     if notes:
         L.append("\n📝 " + "\n📝 ".join(notes))
     s = kayit.stats()
@@ -490,7 +518,7 @@ def main():
     # Elle başlatılan ve gerçek saate uymayan çalışma (ör. seans içinde "post"): gün sonu kayıtlarını bozmasın
     state_tag = "" if detect_mode(now_ny) == mode else "|elle"
     state = D.load_state()
-    summary, by = build(mode, now_ny, extra=state.get("held", []))
+    summary, by = build(mode, now_ny, extra=list(state.get("held", [])) + list((state.get("ov") or {}).get("held", {})))
     if a.ping and C.TELEGRAM_MODE != "rapor":
         telegram.send(f"✅ <b>Borsa takip sistemi güncellendi</b>\n{len(summary['stocks'])} hisse izleniyor · "
                       f"{len(summary['picks'])} stratejik aday: {', '.join(summary['picks'][:10])}"

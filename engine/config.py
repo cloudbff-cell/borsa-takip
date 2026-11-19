@@ -117,18 +117,24 @@ DIP_MAX_DAYS = 10            # pozisyon en fazla bu kadar seans tutulur
 DIP_CLOSE_LEGACY = True      # eski stratejiden kalan pozisyonları otomatik kapat
 
 # ---------- Orta vade (evre 2) – engine/ortavade.py, kurallar engine/ortavade_kural.py ----------
-# 1 yıllık grafikte yükseliş evresi (evre 2) + 3 aylık grafikte taban kırılımı / yükselen dip; haftalar–aylar tutulur.
+# 1 yıllık grafikte yükseliş evresi (evre 2) + 3 aylık grafikte hacimli taban kırılımı; haftalar–aylar tutulur.
 # Kısa vade (dip) stratejisi aynen çalışmaya devam eder; sermaye ikiye bölünür.
+# Seçim tools/ortavade_test.py (2017-2026) sonucuna göre: taban kırılımı + SPY 200 g ort. üstünde, -%8 stop,
+# +%25 kâr al, 4 pozisyon → yıllık +%16.1, maks. düşüş −%18.6 (SPY al-tut +%13.6 / −%33.7).
 OV_ENABLED = True
 OV_ALLOC = 0.50              # sermayenin bu kadarı orta vadeye; kısa vade (dip) kalanla hesaplar
-OV_MAX_POSITIONS = 4         # orta vade payı bu kadar eşit parçaya bölünür
-OV_ENTRY = "ikisi"           # "kirilim" (3 aylık taban kırılımı), "geri" (50 g ort.'ya geri çekilme), "ikisi"
-OV_BASE_MAX = 0.25           # 3 aylık taban en fazla %25 derinlikte olmalı
-OV_VOL_MULT = 1.3            # kırılım günü hacim >= 50 günlük ortalamanın 1.3 katı
+OV_MAX_POSITIONS = 4         # orta vade payı bu kadar eşit parçaya bölünür (testte 3: +13.2, 4: +16.1, 5: +15.1)
+OV_ENTRY = "kirilim"         # "kirilim" (3 aylık taban kırılımı), "geri" (50 g ort.'ya geri çekilme), "ikisi"
+OV_MARKET_FILTER = True      # yalnız SPY 200 günlük ortalamanın üstündeyken yeni alım
+OV_BASE_MAX = 0.25           # 3 aylık taban en fazla %25 derinlikte olmalı (testte %20: +9.8, %35: +11.4)
+OV_VOL_MULT = 1.3            # kırılım günü hacim >= 50 günlük ortalamanın 1.3 katı (1.0x: +9.4, 1.5x: +10.1)
 OV_MAX_EXT = 0.40            # fiyat 150 g ort.'nın %40'tan fazla üstündeyse alma (tepe evresine yakın)
 OV_LIMIT_ABOVE = 0.01        # ertesi seans: kapanışın en fazla %1 üstüne limitli alış (boşlukla kaçarsa kovalamaz)
-OV_STOP = 0.08               # ilk stop: alış fiyatının %8 altı
-OV_EXIT = "sma50"            # "sma50": kapanış 50 g ort.'nın altına inince sat; "sma150": 150 g altı; "atr": iz süren
+OV_STOP = 0.08               # stop: alış fiyatının %8 altı (testte %6: +9.5, %10: +14.0)
+OV_TP = 0.25                 # kâr al: alış fiyatının %25 üstü (None: yalnız çıkış kuralı)
+OV_ENTRY_SESSIONS = 1        # limitli alış bu kadar seans dolmazsa iptal
+OV_MAX_DAYS = 252            # en fazla ~1 yıl tutulur
+OV_EXIT = "yok"              # ek çıkış: "yok", "sma50" (kapanış 50 g altı), "sma150" (150 g altı), "atr" (iz süren)
 OV_TRAIL_ATR = 3.0           # OV_EXIT="atr" ise: girişten beri en yüksek kapanış - 3 ATR
 OV_EXIT_BUFFER = 0.0         # ortalamanın altına bu kadar % inmeden satma (gürültü payı)
 

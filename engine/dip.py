@@ -48,7 +48,10 @@ def _orders(api, days=40):
 def dip_symbols(api, hist=None):
     """'dip-' emriyle alınmış ya da bekleyen 'dip-' alışı olan semboller."""
     hist = _orders(api) if hist is None else hist
-    return {o["symbol"] for o in hist if str(o.get("client_order_id", "")).startswith(TAG_PREFIX)
+    # Aynı hisse daha sonra başka bir strateji (ör. orta vade 'ov-') ile alındıysa o pozisyon dip'in değildir
+    from .ortavade import last_buy_owner
+    other = {s for s, cid in last_buy_owner(hist).items() if cid.startswith("ov-")}
+    return {o["symbol"] for o in hist if o["symbol"] not in other and str(o.get("client_order_id", "")).startswith(TAG_PREFIX)
             and (float(o.get("filled_qty") or 0) > 0
                  or o.get("status") in ("new", "accepted", "held", "partially_filled", "pending_new"))}
 
@@ -228,7 +231,7 @@ def run(summary, by, mode, state, api, equity, cash, tag):
         t = s["t"]
         skey = f"{day}-{t}"
         ctx = _context(s, rank, len(cands), summary)
-        if t in positions or t in pend_orders:
+        if t in positions or t in pend_orders or any(o["symbol"] == t and o["side"] == "buy" for o in orders):
             kayit.upsert_signal(skey, durum="atlandı (zaten elde/emirde)", **ctx)
             continue
         if slots <= 0:
