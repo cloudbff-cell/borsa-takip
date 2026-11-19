@@ -116,6 +116,22 @@ DIP_ENTRY_SESSIONS = 2       # limitli alış bu kadar seans dolmazsa iptal
 DIP_MAX_DAYS = 10            # pozisyon en fazla bu kadar seans tutulur
 DIP_CLOSE_LEGACY = True      # eski stratejiden kalan pozisyonları otomatik kapat
 
+# ---------- Orta vade (evre 2) – engine/ortavade.py, kurallar engine/ortavade_kural.py ----------
+# 1 yıllık grafikte yükseliş evresi (evre 2) + 3 aylık grafikte taban kırılımı / yükselen dip; haftalar–aylar tutulur.
+# Kısa vade (dip) stratejisi aynen çalışmaya devam eder; sermaye ikiye bölünür.
+OV_ENABLED = True
+OV_ALLOC = 0.50              # sermayenin bu kadarı orta vadeye; kısa vade (dip) kalanla hesaplar
+OV_MAX_POSITIONS = 4         # orta vade payı bu kadar eşit parçaya bölünür
+OV_ENTRY = "ikisi"           # "kirilim" (3 aylık taban kırılımı), "geri" (50 g ort.'ya geri çekilme), "ikisi"
+OV_BASE_MAX = 0.25           # 3 aylık taban en fazla %25 derinlikte olmalı
+OV_VOL_MULT = 1.3            # kırılım günü hacim >= 50 günlük ortalamanın 1.3 katı
+OV_MAX_EXT = 0.40            # fiyat 150 g ort.'nın %40'tan fazla üstündeyse alma (tepe evresine yakın)
+OV_LIMIT_ABOVE = 0.01        # ertesi seans: kapanışın en fazla %1 üstüne limitli alış (boşlukla kaçarsa kovalamaz)
+OV_STOP = 0.08               # ilk stop: alış fiyatının %8 altı
+OV_EXIT = "sma50"            # "sma50": kapanış 50 g ort.'nın altına inince sat; "sma150": 150 g altı; "atr": iz süren
+OV_TRAIL_ATR = 3.0           # OV_EXIT="atr" ise: girişten beri en yüksek kapanış - 3 ATR
+OV_EXIT_BUFFER = 0.0         # ortalamanın altına bu kadar % inmeden satma (gürültü payı)
+
 # ---------- Otomatik işlem (Alpaca) ----------
 # Bot yalnızca TRADING_ENABLED=true ortam değişkeni varsa emir verir.
 # ALPACA_PAPER=false yapılmadıkça her zaman SANAL PARA (paper) hesabı kullanılır.

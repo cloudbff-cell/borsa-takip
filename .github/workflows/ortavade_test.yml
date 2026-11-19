@@ -1,0 +1,31 @@
+name: Orta vade geri testi (analiz)
+
+# Orta vade (evre 2: 1 yıllık yükseliş + 3 aylık taban kırılımı / geri çekilme) kurallarını 10 yıllık
+# günlük veriyle test eder. İşlem yapmaz. Sonuç iş özetinde (Summary).
+on:
+  push:
+    branches: [main]
+    paths: ["tools/ortavade_test.py", "engine/ortavade_kural.py"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/cache/restore@v4
+        with:
+          path: cache
+          key: tarama-ortavade-${{ github.run_id }}
+          restore-keys: tarama-
+      - name: Test
+        run: python -u tools/ortavade_test.py
