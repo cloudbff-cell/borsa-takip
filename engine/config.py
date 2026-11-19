@@ -121,7 +121,7 @@ DIP_CLOSE_LEGACY = True      # eski stratejiden kalan pozisyonları otomatik kap
 # Kısa vade (dip) stratejisi aynen çalışmaya devam eder; sermaye ikiye bölünür.
 # Seçim tools/ortavade_test.py (2017-2026) sonucuna göre: taban kırılımı + SPY 200 g ort. üstünde, -%8 stop,
 # +%25 kâr al, 4 pozisyon → yıllık +%16.1, maks. düşüş −%18.6 (SPY al-tut +%13.6 / −%33.7).
-OV_ENABLED = True
+OV_ENABLED = False          # geçici kapalı: kullanıcının istediği "düşüş sonrası yatay taban" kuralına geçiliyor
 OV_ALLOC = 0.50              # sermayenin bu kadarı orta vadeye; kısa vade (dip) kalanla hesaplar
 OV_MAX_POSITIONS = 4         # orta vade payı bu kadar eşit parçaya bölünür (testte 3: +13.2, 4: +16.1, 5: +15.1)
 OV_ENTRY = "kirilim"         # "kirilim" (3 aylık taban kırılımı), "geri" (50 g ort.'ya geri çekilme), "ikisi"
