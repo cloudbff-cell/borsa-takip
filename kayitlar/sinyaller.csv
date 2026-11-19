@@ -6,7 +6,7 @@ anahtar,sinyal_tarihi,sembol,sirket,sektor,strateji,durum,kapanis,limit,dusus_3g
 2026-11-17-PLTR,2026-11-17,PLTR,Palantir Technologies Inc.,Teknoloji,3 gün düşüş,atlandı (nakit yok),156.56,153.43,-8.75,1.77,32.83,5.65,0.67,45.7,386.5,0.001,0.041,Yatay,-1.05,3,5,,,,,,,,,,,,,,,
 2026-11-17-CRWD,2026-11-17,CRWD,"CrowdStrike Holdings, Inc.",Teknoloji,3 gün düşüş,atlandı (nakit yok),219.58,215.19,-4.48,26.08,38.69,6.2,0.82,54.4,228.6,0.007,0.042,Yatay,-1.05,4,5,,,,,,,,,,,,,,,
 2026-11-17-PANW,2026-11-17,PANW,"Palo Alto Networks, Inc.",Teknoloji,3 gün düşüş,atlandı (nakit yok),309.29,303.1,-4.14,11.02,35.06,5.97,1.04,38.7,258.8,0.015,0.018,Yatay,-1.05,5,5,,,,,,,,,,,,,,,
-2026-11-18-ACN,2026-11-18,ACN,Accenture plc,Teknoloji,3 gün düşüş,emir verildi,227.46,222.91,-9.19,21.46,41.69,4.28,0.83,80.6,141.4,0.079,0.076,Yatay,-0.3,1,10,141,,,,218.45,227.37,,,,,,,,,
+2026-11-18-ACN,2026-11-18,ACN,Accenture plc,Teknoloji,3 gün düşüş,açık,227.46,222.91,-9.19,21.46,41.69,4.28,0.83,80.6,141.4,0.079,0.076,Yatay,-0.3,1,10,141,2026-11-19,09:52,222.83,218.37,227.29,,,,,,,,,
 2026-11-18-MRK,2026-11-18,MRK,"Merck & Company, Inc.",Sağlık,3 gün düşüş,atlandı (3 pozisyon dolu),137.75,135.0,-6.77,7.59,37.19,3.1,0.77,44.0,353.4,0.199,0.036,Yatay,-0.3,2,10,,,,,,,,,,,,,,,
 2026-11-18-CVX,2026-11-18,CVX,Chevron Corporation,Enerji,3 gün düşüş,atlandı (3 pozisyon dolu),205.88,201.76,-6.37,5.82,36.42,2.55,0.98,66.1,421.7,0.105,0.04,Yatay,-0.3,3,10,,,,,,,,,,,,,,,
 2026-11-18-COP,2026-11-18,COP,ConocoPhillips,Enerji,3 gün düşüş,atlandı (3 pozisyon dolu),134.39,131.7,-4.92,9.97,42.33,2.98,0.87,54.7,164.9,0.182,0.078,Yatay,-0.3,4,10,,,,,,,,,,,,,,,
