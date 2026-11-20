@@ -26,3 +26,6 @@ tarih,saat,sembol,islem,adet,fiyat,tutar,neden,strateji,emir_id,anahtar
 2026-11-19,16:01,PLTR,EMİR,20,155.22,3104.4,"1/3. parça · dipten tepeye %100 yükseliş, tepeden %28 düşüş, 10 seanstır yeni dip yok (dip $152.60), fiyat dibin %0.7 üstünde",orta vade,ov-2026-11-19-PLTR-1,emir-ov-2026-11-19-PLTR-1
 2026-11-19,16:01,UBER,EMİR,46,66.26,3047.96,"1/3. parça · dipten tepeye %56 yükseliş, tepeden %31 düşüş, 15 seanstır yeni dip yok (dip $64.04), fiyat dibin %2.4 üstünde",orta vade,ov-2026-11-19-UBER-1,emir-ov-2026-11-19-UBER-1
 2026-11-19,16:01,GEV,EMİR,4,764.21,3056.84,"1/3. parça · dipten tepeye %137 yükseliş, tepeden %38 düşüş, 7 seanstır yeni dip yok (dip $747.00), fiyat dibin %1.3 üstünde",orta vade,ov-2026-11-19-GEV-1,emir-ov-2026-11-19-GEV-1
+2026-11-20,09:31,GEV,ALIŞ,3.0,740.48,2221.44,orta vade: 1/3. parça doldu (ort. maliyet $740.48),orta vade,ov-2026-11-19-GEV-1,alis-87c47091-ac3f-4c51-9391-fc75934f3e3a
+2026-11-20,09:30,PLTR,ALIŞ,20.0,149.54,2990.8,orta vade: 1/3. parça doldu (ort. maliyet $149.54),orta vade,ov-2026-11-19-PLTR-1,alis-bfce591f-6e2b-4f09-b08d-c5baebaab2b1
+2026-11-20,09:30,UBER,ALIŞ,31.0,66.19,2051.89,orta vade: 1/3. parça doldu (ort. maliyet $66.19),orta vade,ov-2026-11-19-UBER-1,alis-c01a4f64-f42e-426f-92e8-ca5d95e9475b
