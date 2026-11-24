@@ -127,3 +127,8 @@ Fiyat yükselirken alıp aynı gün satan 8 gün içi kural 10 yıllık 5 dk ver
 
 ## İşlem grafikleri (`engine/grafik.py`)
 Her yeni emir, alış ve satışta Telegram'a grafik gelir: son ~3 ayın günlük mumları, 20/50 günlük ortalama, alış ▲ / satış ▼ noktaları, limit, stop ve kâr al çizgileri; altında fiyat, K/Z ve neden.
+
+## Piyasa öncesi bildirimi (`engine/seansdisi.py`)
+Her işlem günü NY 09:00'dan sonraki ilk açılış öncesi çalışmada (TR ~17:00, yazın ~16:00) Telegram'a bir mesaj gelir: elde tutulan ve alış emri bekleyen her hissenin seans dışı fiyatı ve dünkü kapanışa göre değişimi. İşaretler: ⚠️ −%3 ve üstü düşüş (`PM_ALERT`), 🎯 fiyat bekleyen alış limitinin altında, 🛑 stopun altında, 🚀 kâr alın üstünde. Emirleri değiştirmez.
+
+**Test (Kasım 2026, `tools/premarket_test.py`, 5 yıl, 893 işlem):** seans dışında sert düşen hissenin alış emrini açılıştan önce iptal etmek −%5/−%6 eşiğinde yıllık yalnız +%0.1-0.2 fark etti (yılda 3-4 olay, gürültü seviyesinde), −%3/−%4 eşiğinde getiriyi düşürdü. Stopun altında açılacak pozisyonu piyasa öncesinde satmak açılışa göre ortalama yalnız +%0.12 fark etti. Bu yüzden otomatik kural eklenmedi, yalnız bildirim var.
