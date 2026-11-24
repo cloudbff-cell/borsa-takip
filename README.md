@@ -121,3 +121,9 @@ S&P 500 Shariah / SPUS yöntemine yakın iki katmanlı tarama; ilk 50, sektör l
 - Puan: teknik 40 + 90 günlük momentum 20 + hacim teyidi 5 (100'e ölçeklenir). Giriş kuralları hisselerle aynı (65/75).
 - Emir: limitli alış (GTC); dolunca stop-limit satış. İz süren stop 3 ATR. Fiyat stopun altına boşlukla inerse piyasa emriyle kapatılır.
 - SAT sinyali çıkışı yok (10 yıllık testte kriptoda sonucu kötüleştirdi). 7/24 çalışır; her UTC günü kapanışında Telegram'a kripto özeti.
+
+## Yükselişte kazanma araştırması (Kasım 2026, `tools/yukselis_arastirma.py`)
+Fiyat yükselirken alıp aynı gün satan 8 gün içi kural 10 yıllık 5 dk veriyle (2016-12 – 2026-11, İslami ilk 50, kaldıraçsız 3 x 1/3, kayma %0.05 x 2) test edildi: trend günü 11:00, boşluk ve devam, ORB 30 + piyasa yukarı, zirvede bayrak kırılımı, dünkü güçlü gün devamı (VWAP çıkışlı varyantlarıyla). **Hiçbiri kârlı değil** (yıllık −%0 ile −%14, 11 yılın en fazla 3'ünde pozitif). Tek pozitif sonuç gece momentumu (güçlü kapanışta al, ertesi açılışta sat): yıllık +%4.7, ama −%41 düşüş, 11 yılın 6'sında pozitif ve SPY al-tut (+%14.1) çok gerisinde, güvenilir sayılmadı. Bu yüzden canlı bota yükseliş için gün içi strateji eklenmedi. Yükselen piyasadan pay almanın test edilmiş yolu: boşta nakdi İslami ETF'te (SPUS) tutmak (`tools/getiri_arttirma.py`, seçenek A).
+
+## İşlem grafikleri (`engine/grafik.py`)
+Her yeni emir, alış ve satışta Telegram'a grafik gelir: son ~3 ayın günlük mumları, 20/50 günlük ortalama, alış ▲ / satış ▼ noktaları, limit, stop ve kâr al çizgileri; altında fiyat, K/Z ve neden.
