@@ -1,0 +1,33 @@
+name: Seans dışı fiyat testi (analiz)
+
+# Kapanış sonrası + piyasa öncesi fiyatın 3 gün düşüş stratejisine katkısını test eder. İşlem yapmaz.
+on:
+  push:
+    branches: [main]
+    paths: ["tools/premarket_test.py"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/cache/restore@v4
+        with:
+          path: cache
+          key: tarama-d5-${{ github.run_id }}
+          restore-keys: tarama-
+      - name: Test
+        env:
+          ALPACA_KEY_ID: ${{ secrets.ALPACA_KEY_ID }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: python -u tools/premarket_test.py
