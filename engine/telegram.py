@@ -52,3 +52,25 @@ def send(text: str) -> bool:
     if ok:
         print(f"Telegram: {len(chunks)} mesaj gönderildi.")
     return ok
+
+
+def _creds():
+    token = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip().strip('"').strip("'")
+    m = re.search(r"\d{6,12}:[A-Za-z0-9_-]{30,}", token)
+    if m:
+        token = m.group(0)
+    return token, (os.getenv("TELEGRAM_CHAT_ID") or "").strip().strip('"').strip("'")
+
+
+def send_photo(png: bytes, caption: str = "") -> bool:
+    """Grafik (PNG) gönder; açıklama en fazla 1024 karakter (HTML)."""
+    token, chat = _creds()
+    if not token or not chat:
+        print("---- TELEGRAM GRAFİK (token yok, gönderilmedi) ----\n" + caption)
+        return False
+    r = requests.post(f"https://api.telegram.org/bot{token}/sendPhoto",
+                      data={"chat_id": chat, "caption": caption[:1024], "parse_mode": "HTML"},
+                      files={"photo": ("grafik.png", png, "image/png")}, timeout=30)
+    if not r.ok:
+        print("Telegram grafik hatası:", r.status_code, r.text[:300])
+    return r.ok

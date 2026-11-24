@@ -17,6 +17,7 @@ import pandas as pd
 from . import config as C
 from . import data as D
 from . import telegram
+from . import grafik
 from . import trader
 from . import crypto
 from . import sharia
@@ -548,6 +549,10 @@ def main():
             telegram.send(("✅ <b>Kapanışta teyitli sinyaller</b>\n\n" if mode == "post" else "⏱ <b>Seans içi yeni sinyaller</b>\n\n")
                           + "\n\n".join(msgs))
         portfolio = trade_step(summary, by, mode, state)
+        try:      # her yeni emir / alış / satış için grafik
+            grafik.send_pending()
+        except Exception as e:  # noqa: BLE001
+            print("Grafik gönderilemedi:", e)
         try:      # günlük işlem yedeği: kapanışa yakın açık kalmış günlük pozisyonları kapat
             dmsg = daytrade.safety_flatten(now_ny)
             if dmsg:

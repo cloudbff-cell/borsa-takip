@@ -26,6 +26,7 @@ SIG_COLS = ["anahtar", "sinyal_tarihi", "sembol", "sirket", "sektor", "strateji"
             "cikis_tarihi", "cikis_saati", "cikis_fiyati", "cikis_nedeni", "kar_zarar_usd", "kar_zarar_yuzde",
             "tutma_seans", "en_yuksek_yuzde", "en_dusuk_yuzde",
             "giris_turu", "evre", "taban_derinlik_yuzde", "sma150_uzaklik_yuzde", "getiri_3a_yuzde"]
+NEW = []          # bu çalışmada eklenen olaylar (grafik bildirimi için)
 EVT_COLS = ["tarih", "saat", "sembol", "islem", "adet", "fiyat", "tutar", "neden", "strateji", "emir_id", "anahtar"]
 
 
@@ -61,6 +62,7 @@ def add_event(tarih=None, saat=None, **kw):
         kw["tutar"] = round(float(kw["adet"]) * float(kw["fiyat"]), 2)
     rows.append(kw)
     _write(EVT, rows, EVT_COLS)
+    NEW.append(dict(kw))
     return True
 
 
