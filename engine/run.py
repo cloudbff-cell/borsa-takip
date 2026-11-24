@@ -18,6 +18,7 @@ from . import config as C
 from . import data as D
 from . import telegram
 from . import grafik
+from . import seansdisi
 from . import trader
 from . import crypto
 from . import sharia
@@ -543,6 +544,12 @@ def main():
         if key not in state["sent"] and not rapor:
             telegram.send(plan_message(summary, by))
             state["sent"][key] = str(now_ny.date())
+        try:      # piyasa öncesi: elde/emirdeki hisselerin seans dışı fiyatı (NY 09:00 sonrası, günde bir)
+            pm = seansdisi.run(state, now_ny)
+            if pm:
+                telegram.send(pm)
+        except Exception as e:  # noqa: BLE001
+            print("Piyasa öncesi bildirimi hatası:", e)
     else:
         msgs = alerts(summary, by, mode, state, state_tag)
         if msgs and not rapor:

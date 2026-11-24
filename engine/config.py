@@ -114,7 +114,8 @@ DIP_STOP = 0.02              # stop: alış fiyatının %2 altı
 DIP_TP = 0.02                # kâr al: alış fiyatının %2 üstü
 DIP_ENTRY_SESSIONS = 2       # limitli alış bu kadar seans dolmazsa iptal
 DIP_MAX_DAYS = 10            # pozisyon en fazla bu kadar seans tutulur
-DIP_CLOSE_LEGACY = True      # eski stratejiden kalan pozisyonları otomatik kapat
+DIP_CLOSE_LEGACY = True
+PM_ALERT = 0.03              # piyasa öncesi bildiriminde bu kadar ve üstü düşüş ⚠️ ile işaretlenir      # eski stratejiden kalan pozisyonları otomatik kapat
 
 # ---------- Orta vade (kullanıcının kuralı) – engine/ortavade.py, kurallar engine/ortavade_kural.py ----------
 # 'Düşüş sonrası dipte yatay' + kademeli alım. İslami ilk 50. Kısa vade (dip) aynen devam; sermaye ikiye bölünür.
