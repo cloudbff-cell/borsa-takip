@@ -104,8 +104,21 @@ class Alpaca:
         return self._r("GET", "/v2/positions")
 
     def open_orders(self):
-        # nested=false: bacaklar (stop/kâr al) ayrı emir olarak gelir; ana emir dolduktan sonra da görünür
-        return self._r("GET", "/v2/orders", params={"status": "open", "nested": "false", "limit": 500})
+        """Açık emirler, bracket/OCO bacakları (stop, kâr al) dahil, düz liste.
+        nested=false ile Alpaca 'held' durumdaki stop bacağını döndürmüyor; bot stop yok sanıp yeni koruma
+        emri kurmaya çalışıyor ve hisse kâr al emrinde tutulduğu için 403 'insufficient qty' alıyordu.
+        Bu yüzden iki liste (nested=false ve nested=true) birleştirilir, bacaklar açılır, tekrarlar atılır."""
+        flat = self._r("GET", "/v2/orders", params={"status": "open", "nested": "false", "limit": 500}) or []
+        nest = self._r("GET", "/v2/orders", params={"status": "open", "nested": "true", "limit": 500}) or []
+        raw = list(flat) + list(nest)
+        out, seen = [], set()
+        for o in raw:
+            for x in [o] + list(o.get("legs") or []):
+                if x.get("id") in seen or x.get("status") in ("filled", "canceled", "expired", "rejected", "replaced"):
+                    continue
+                seen.add(x.get("id"))
+                out.append(x)
+        return out
 
     def bracket_buy(self, sym, qty, limit, stop, tp, client_id):
         """Limitli alış + bağlı stop (tp verilirse kâr al da). GTC: stop gece de korur; gerçekleşmeyen
