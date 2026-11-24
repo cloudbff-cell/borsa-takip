@@ -224,9 +224,10 @@ def test_open_orders_includes_held_bracket_legs():
     """Bracket'in 'held' stop bacağı da listede olmalı (yoksa bot gereksiz koruma emri deneyip 403 alır)."""
     from engine.trader import Alpaca
     api = Alpaca.__new__(Alpaca)
-    api._r = lambda *a, **k: [{"id": "p", "symbol": "GEV", "side": "buy", "type": "limit", "status": "filled",
-                               "legs": [{"id": "tp", "symbol": "GEV", "side": "sell", "type": "limit", "status": "new", "qty": "4"},
-                                        {"id": "sl", "symbol": "GEV", "side": "sell", "type": "stop", "status": "held", "qty": "4"}]}]
+    tp = {"id": "tp", "symbol": "GEV", "side": "sell", "type": "limit", "status": "new", "qty": "4"}
+    sl = {"id": "sl", "symbol": "GEV", "side": "sell", "type": "stop", "status": "held", "qty": "4"}
+    old = {"id": "x", "symbol": "GEV", "side": "sell", "type": "stop", "status": "filled", "qty": "4"}
+    api._r = lambda m, u, params=None, **k: [tp] if params["status"] == "open" else [tp, sl, old]
     got = {o["id"]: o for o in api.open_orders()}
     assert set(got) == {"tp", "sl"} and got["sl"]["type"] == "stop"
 

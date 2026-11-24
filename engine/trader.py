@@ -15,7 +15,7 @@ import json
 import re
 import math
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import requests
 from pathlib import Path
@@ -104,20 +104,24 @@ class Alpaca:
         return self._r("GET", "/v2/positions")
 
     def open_orders(self):
-        """Açık emirler, bracket/OCO bacakları (stop, kâr al) dahil, düz liste.
-        nested=false ile Alpaca 'held' durumdaki stop bacağını döndürmüyor; bot stop yok sanıp yeni koruma
-        emri kurmaya çalışıyor ve hisse kâr al emrinde tutulduğu için 403 'insufficient qty' alıyordu.
-        Bu yüzden iki liste (nested=false ve nested=true) birleştirilir, bacaklar açılır, tekrarlar atılır."""
-        flat = self._r("GET", "/v2/orders", params={"status": "open", "nested": "false", "limit": 500}) or []
-        nest = self._r("GET", "/v2/orders", params={"status": "open", "nested": "true", "limit": 500}) or []
-        raw = list(flat) + list(nest)
+        """Açık emirler, bracket stop bacakları dahil, düz liste.
+        Alpaca 'status=open' sorgusu bracket'in 'held' durumdaki stop bacağını döndürmüyor (alış dolduktan sonra
+        stop bacağı 'held' kalır ama çalışır). Bot stop yok sanıp yeni koruma emri kurmaya çalışıyor, hisse kâr al
+        emrinde tutulduğu için 403 'insufficient qty' alıyordu. Bu yüzden son 90 günün 'held' emirleri eklenir."""
+        rows = list(self._r("GET", "/v2/orders", params={"status": "open", "nested": "false", "limit": 500}) or [])
+        after = (datetime.utcnow() - timedelta(days=90)).strftime("%Y-%m-%dT00:00:00Z")
+        try:
+            rows += [o for o in self._r("GET", "/v2/orders", params={"status": "all", "nested": "false",
+                                                                     "after": after, "limit": 500}) or []
+                     if o.get("status") == "held"]
+        except RuntimeError as e:
+            print("held emirler okunamadı:", e)
         out, seen = [], set()
-        for o in raw:
-            for x in [o] + list(o.get("legs") or []):
-                if x.get("id") in seen or x.get("status") in ("filled", "canceled", "expired", "rejected", "replaced"):
-                    continue
-                seen.add(x.get("id"))
-                out.append(x)
+        for x in rows:
+            if x.get("id") in seen:
+                continue
+            seen.add(x.get("id"))
+            out.append(x)
         return out
 
     def bracket_buy(self, sym, qty, limit, stop, tp, client_id):
