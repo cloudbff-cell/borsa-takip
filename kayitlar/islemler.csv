@@ -35,3 +35,6 @@ tarih,saat,sembol,islem,adet,fiyat,tutar,neden,strateji,emir_id,anahtar
 2026-11-23,16:01,MRK,İPTAL,119,130.09,15480.71,limitli alış 2 seansta dolmadı,3 gün düşüş,dip-2026-11-19-MRK,iptal-6a617ca5-0953-4d14-b8c3-6f1a6a028a52
 2026-11-23,16:01,LLY,İPTAL,11,1324.18,14565.98,limitli alış 2 seansta dolmadı,3 gün düşüş,dip-2026-11-19-LLY,iptal-19d592f5-b665-459b-bd57-6d4860f393ed
 2026-11-25,11:35,GEV,SATIŞ,4.0,672.1,2688.4,stop (dibin %10 altı – dip kırıldı),orta vade,b1c3866f-9cfd-4b5a-bc8d-7d07f0c4a407,satis-7a7cb7b4-d766-472d-ac22-b3f7cfab5874
+2026-11-25,16:01,UBER,EMİR,46,67.08,3085.68,"3/3. parça · dipten tepeye %56 yükseliş, tepeden %32 düşüş, 3 seanstır yeni dip yok (dip $63.29), fiyat dibin %4.9 üstünde",orta vade,ov-2026-11-25-UBER-3,emir-ov-2026-11-25-UBER-3
+2026-11-25,16:01,CSCO,EMİR,32,95.14,3044.48,"2/3. parça · dipten tepeye %109 yükseliş, tepeden %30 düşüş, 3 seanstır yeni dip yok (dip $89.99), fiyat dibin %4.7 üstünde",orta vade,ov-2026-11-25-CSCO-2,emir-ov-2026-11-25-CSCO-2
+2026-11-25,16:01,META,EMİR,5,615.99,3079.95,"1/3. parça · dipten tepeye %50 yükseliş, tepeden %28 düşüş, 3 seanstır yeni dip yok (dip $558.68), fiyat dibin %9.2 üstünde",orta vade,ov-2026-11-25-META-1,emir-ov-2026-11-25-META-1
