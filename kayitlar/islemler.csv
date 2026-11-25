@@ -34,3 +34,4 @@ tarih,saat,sembol,islem,adet,fiyat,tutar,neden,strateji,emir_id,anahtar
 2026-11-23,16:01,JNJ,İPTAL,59,261.68,15439.12,limitli alış 2 seansta dolmadı,3 gün düşüş,dip-2026-11-19-JNJ,iptal-8772dc8d-823c-46e7-80dc-6e046862aba6
 2026-11-23,16:01,MRK,İPTAL,119,130.09,15480.71,limitli alış 2 seansta dolmadı,3 gün düşüş,dip-2026-11-19-MRK,iptal-6a617ca5-0953-4d14-b8c3-6f1a6a028a52
 2026-11-23,16:01,LLY,İPTAL,11,1324.18,14565.98,limitli alış 2 seansta dolmadı,3 gün düşüş,dip-2026-11-19-LLY,iptal-19d592f5-b665-459b-bd57-6d4860f393ed
+2026-11-25,11:35,GEV,SATIŞ,4.0,672.1,2688.4,stop (dibin %10 altı – dip kırıldı),orta vade,b1c3866f-9cfd-4b5a-bc8d-7d07f0c4a407,satis-7a7cb7b4-d766-472d-ac22-b3f7cfab5874
