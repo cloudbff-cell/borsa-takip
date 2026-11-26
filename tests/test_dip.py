@@ -96,7 +96,10 @@ def main():
     for _, s, q, lim, stop, tp, cid in buys:
         assert cid.startswith("dip-") and abs(lim - 98) < 1e-9 and abs(stop - 96.04) < 1e-9 and abs(tp - 99.96) < 1e-9
         assert q * lim <= 90000 / C.DIP_MAX_POSITIONS + 1
-    assert len(msgs) == 1 and msgs[0].startswith("📥 <b>Emir giriyorum") and "BBB" in msgs[0], msgs
+    assert len(msgs) == 2 and msgs[0].startswith("📥 <b>Emir giriyorum") and "BBB" in msgs[0], msgs
+    # 3 pozisyon doldu: AAA için "yer olsaydı alırdım" bildirimi (emir yok)
+    assert msgs[1].startswith("📦 <b>Pozisyon sınırı dolu") and "<b>AAA</b> 153 adet @ $98.00" in msgs[1], msgs
+    assert "BBB, CCC, DDD" in msgs[1], msgs[1]
     sg = {r["sembol"]: r for r in kayit.signals()}
     assert sg["AAA"]["durum"].startswith("atlandı") and sg["BBB"]["durum"] == "emir verildi", sg
     assert [e["islem"] for e in kayit.events()] == ["EMİR"] * 3

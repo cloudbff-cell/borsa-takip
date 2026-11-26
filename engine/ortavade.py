@@ -101,7 +101,8 @@ def _missed_line(t, part, qty, lim, stop, tp, room, why):
         size = f"1 hisse (${lim:,.2f}) bile parça bütçesini aşıyor"
     else:
         size = f"{qty} adet @ ${lim:,.2f} (≈${qty*lim:,.0f})"
-    return (f"• <b>{t}</b> {part}/{n_parts()}. parça · {size} · eldeki nakit ${max(room, 0):,.0f}\n"
+    cash_txt = f" · eldeki nakit ${max(room, 0):,.0f}" if room is not None else ""
+    return (f"• <b>{t}</b> {part}/{n_parts()}. parça · {size}{cash_txt}\n"
             f"   Stop ${stop:,.2f} · Kâr al ≈${tp:,.2f}\n"
             f"   Neden: {why}")
 
@@ -248,7 +249,7 @@ def run(summary, by, mode, state, api, pocket, cash, tag):
 
     # 6) Elde olanlar: süre, İslami filtre, sonraki parça (ilk alıştan g seans sonra, hâlâ dipte/yataydaysa)
     room = max(cash, 0.0) * 0.98
-    placed, missed = [], []
+    placed, missed, no_slot = [], [], []
     for s, info in vs["held"].items():
         if s not in held or s in vs["closing"]:
             continue
@@ -315,15 +316,18 @@ def run(summary, by, mode, state, api, pocket, cash, tag):
         if t in positions or t in any_pend or t in vs["pending"]:
             continue
         ctx = _context(s, rank, len(cands), summary)
-        if slots <= 0:
-            kayit.upsert_signal(skey, durum=f"atlandı ({C.OV_MAX_POSITIONS} orta vade pozisyonu dolu)", **ctx)
-            notes.append(f"ℹ️ {t} orta vade sinyali verdi ama {C.OV_MAX_POSITIONS} pozisyon dolu")
-            continue
         o = s["ov"]
         lim = o["limit"]
-        qty = math.floor(min(budget / n_parts(), room) / lim)
         stop = o["stop"]
         tp = round(lim * (1 + C.TB_TP), 2)
+        if slots <= 0:
+            full = math.floor(budget / n_parts() / lim)
+            kayit.upsert_signal(skey, durum=f"atlandı ({C.OV_MAX_POSITIONS} orta vade pozisyonu dolu)", adet=full,
+                                stop=stop, kar_al=tp, **ctx)
+            notes.append(f"ℹ️ {t} orta vade sinyali verdi ama {C.OV_MAX_POSITIONS} pozisyon dolu")
+            no_slot.append(_missed_line(t, 1, full, lim, stop, tp, None, why_text(o, 1)))
+            continue
+        qty = math.floor(min(budget / n_parts(), room) / lim)
         if qty < 1:
             full = math.floor(budget / n_parts() / lim)
             kayit.upsert_signal(skey, durum="atlandı (nakit yok)", adet=full, stop=stop, kar_al=tp, **ctx)
@@ -356,4 +360,8 @@ def run(summary, by, mode, state, api, pocket, cash, tag):
     if missed:
         alerts.append(f"💸 <b>Orta vade – nakit yetmedi, para olsaydı alırdım</b> ({tag}) – {day} kapanışına göre:\n"
                       + "\n".join(missed))
+    if no_slot:
+        held_txt = ", ".join(sorted(set(held) | set(vs["pending"]))) or "-"
+        alerts.append(f"📦 <b>Orta vade – pozisyon sınırı dolu ({C.OV_MAX_POSITIONS}), yer olsaydı alırdım</b> ({tag}) – "
+                      f"{day} kapanışına göre (elde/emirde: {held_txt}):\n" + "\n".join(no_slot))
     return _done()

@@ -92,7 +92,8 @@ def _missed_line(t, qty, lim, stop, tp, room, why):
         size = f"1 hisse (${lim:,.2f}) bile pozisyon bütçesini aşıyor"
     else:
         size = f"{qty} adet @ ${lim:,.2f} (≈${qty*lim:,.0f})"
-    return (f"• <b>{t}</b> {size} · eldeki nakit ${max(room, 0):,.0f}\n"
+    cash_txt = f" · eldeki nakit ${max(room, 0):,.0f}" if room is not None else ""
+    return (f"• <b>{t}</b> {size}{cash_txt}\n"
             f"   Stop ${stop:,.2f} · Kâr al ${tp:,.2f} · {C.DIP_ENTRY_SESSIONS} seans geçerli olurdu\n"
             f"   Neden: {why}")
 
@@ -237,7 +238,7 @@ def run(summary, by, mode, state, api, equity, cash, tag):
     cands = sorted([s for s in summary["stocks"] if s.get("isTop") and (s.get("dip") or {}).get("signal")
                     and (s.get("sharia") or {}).get("ok")], key=lambda s: s["dip"]["drop3"])
     room = max(cash, 0.0) * 0.98
-    placed, missed = [], []
+    placed, missed, no_slot = [], [], []
     for rank, s in enumerate(cands, 1):
         t = s["t"]
         skey = f"{day}-{t}"
@@ -245,16 +246,19 @@ def run(summary, by, mode, state, api, equity, cash, tag):
         if t in positions or t in pend_orders or any(o["symbol"] == t and o["side"] == "buy" for o in orders):
             kayit.upsert_signal(skey, durum="atlandı (zaten elde/emirde)", **ctx)
             continue
-        if slots <= 0:
-            kayit.upsert_signal(skey, durum=f"atlandı ({C.DIP_MAX_POSITIONS} pozisyon dolu)", **ctx)
-            notes.append(f"ℹ️ {t} sinyal verdi ama {C.DIP_MAX_POSITIONS} pozisyon dolu")
-            continue
         lim = s["dip"]["limit"]
-        qty = math.floor(min(equity / C.DIP_MAX_POSITIONS, room) / lim)
         stop, tp = round(lim * (1 - C.DIP_STOP), 2), round(lim * (1 + C.DIP_TP), 2)
         cid = f"{TAG_PREFIX}{day}-{t}"
         why = (f"3 gün üst üste düştü ({s['dip']['drop3']:+.1f}%), 200 gün ort. üstünde; "
                f"limit = kapanış ${s['dip']['close']:,.2f} − %{C.DIP_LIMIT_BELOW*100:g}")
+        if slots <= 0:
+            full = math.floor(equity / C.DIP_MAX_POSITIONS / lim)
+            kayit.upsert_signal(skey, durum=f"atlandı ({C.DIP_MAX_POSITIONS} pozisyon dolu)", adet=full, stop=stop,
+                                kar_al=tp, **ctx)
+            notes.append(f"ℹ️ {t} sinyal verdi ama {C.DIP_MAX_POSITIONS} pozisyon dolu")
+            no_slot.append(_missed_line(t, full, lim, stop, tp, None, why))
+            continue
+        qty = math.floor(min(equity / C.DIP_MAX_POSITIONS, room) / lim)
         if qty < 1:
             full = math.floor(equity / C.DIP_MAX_POSITIONS / lim)
             kayit.upsert_signal(skey, durum="atlandı (nakit yok)", adet=full, stop=stop, kar_al=tp, **ctx)
@@ -282,4 +286,8 @@ def run(summary, by, mode, state, api, equity, cash, tag):
     if missed:
         alerts.append(f"💸 <b>Nakit yetmedi – para olsaydı alırdım</b> ({tag}) – {day} kapanışına göre:\n"
                       + "\n".join(missed))
+    if no_slot:
+        held_txt = ", ".join(sorted(set(held) | set(ds["pending"]))) or "-"
+        alerts.append(f"📦 <b>Pozisyon sınırı dolu ({C.DIP_MAX_POSITIONS}) – yer olsaydı alırdım</b> ({tag}) – "
+                      f"{day} kapanışına göre (elde/emirde: {held_txt}):\n" + "\n".join(no_slot))
     return _done()
