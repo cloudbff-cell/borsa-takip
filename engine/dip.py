@@ -86,6 +86,17 @@ def _context(s, rank, n_same, summary):
             "spy_trend": b.get("trend"), "spy_gun_yuzde": b.get("chg"), "sira": rank, "ayni_gun_sinyal": n_same}
 
 
+def _missed_line(t, qty, lim, stop, tp, room, why):
+    """Nakit yetmediği için verilemeyen emrin 'para olsaydı' özeti (Telegram)."""
+    if qty < 1:
+        size = f"1 hisse (${lim:,.2f}) bile pozisyon bütçesini aşıyor"
+    else:
+        size = f"{qty} adet @ ${lim:,.2f} (≈${qty*lim:,.0f})"
+    return (f"• <b>{t}</b> {size} · eldeki nakit ${max(room, 0):,.0f}\n"
+            f"   Stop ${stop:,.2f} · Kâr al ${tp:,.2f} · {C.DIP_ENTRY_SESSIONS} seans geçerli olurdu\n"
+            f"   Neden: {why}")
+
+
 def run(summary, by, mode, state, api, equity, cash, tag):
     """(anlık bildirimler, gün sonu notları). Anlık bildirim yalnız emir girerken üretilir."""
     ds = state.setdefault("dip", {})
@@ -226,7 +237,7 @@ def run(summary, by, mode, state, api, equity, cash, tag):
     cands = sorted([s for s in summary["stocks"] if s.get("isTop") and (s.get("dip") or {}).get("signal")
                     and (s.get("sharia") or {}).get("ok")], key=lambda s: s["dip"]["drop3"])
     room = max(cash, 0.0) * 0.98
-    placed = []
+    placed, missed = [], []
     for rank, s in enumerate(cands, 1):
         t = s["t"]
         skey = f"{day}-{t}"
@@ -240,14 +251,16 @@ def run(summary, by, mode, state, api, equity, cash, tag):
             continue
         lim = s["dip"]["limit"]
         qty = math.floor(min(equity / C.DIP_MAX_POSITIONS, room) / lim)
-        if qty < 1:
-            kayit.upsert_signal(skey, durum="atlandı (nakit yok)", **ctx)
-            notes.append(f"⚠️ {t} sinyal verdi ama yeterli nakit yok")
-            continue
         stop, tp = round(lim * (1 - C.DIP_STOP), 2), round(lim * (1 + C.DIP_TP), 2)
         cid = f"{TAG_PREFIX}{day}-{t}"
         why = (f"3 gün üst üste düştü ({s['dip']['drop3']:+.1f}%), 200 gün ort. üstünde; "
                f"limit = kapanış ${s['dip']['close']:,.2f} − %{C.DIP_LIMIT_BELOW*100:g}")
+        if qty < 1:
+            full = math.floor(equity / C.DIP_MAX_POSITIONS / lim)
+            kayit.upsert_signal(skey, durum="atlandı (nakit yok)", adet=full, stop=stop, kar_al=tp, **ctx)
+            notes.append(f"⚠️ {t} sinyal verdi ama yeterli nakit yok")
+            missed.append(_missed_line(t, full, lim, stop, tp, room, why))
+            continue
         try:
             api.bracket_buy(t, qty, lim, stop, tp, cid)
         except RuntimeError as ex:
@@ -266,4 +279,7 @@ def run(summary, by, mode, state, api, equity, cash, tag):
         notes.append(f"📥 {t} limitli alış emri girildi @ ${lim:,.2f}")
     if placed:
         alerts.append(f"📥 <b>Emir giriyorum</b> ({tag}) – {day} kapanışına göre limitli alış:\n" + "\n".join(placed))
+    if missed:
+        alerts.append(f"💸 <b>Nakit yetmedi – para olsaydı alırdım</b> ({tag}) – {day} kapanışına göre:\n"
+                      + "\n".join(missed))
     return _done()

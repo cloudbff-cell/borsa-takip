@@ -95,6 +95,17 @@ def candidates(summary):
                    and (s.get("sharia") or {}).get("ok")], key=lambda s: -(s["ov"].get("ret63") or -999))
 
 
+def _missed_line(t, part, qty, lim, stop, tp, room, why):
+    """Nakit yetmediği için verilemeyen parçanın 'para olsaydı' özeti (Telegram)."""
+    if qty < 1:
+        size = f"1 hisse (${lim:,.2f}) bile parça bütçesini aşıyor"
+    else:
+        size = f"{qty} adet @ ${lim:,.2f} (≈${qty*lim:,.0f})"
+    return (f"• <b>{t}</b> {part}/{n_parts()}. parça · {size} · eldeki nakit ${max(room, 0):,.0f}\n"
+            f"   Stop ${stop:,.2f} · Kâr al ≈${tp:,.2f}\n"
+            f"   Neden: {why}")
+
+
 def run(summary, by, mode, state, api, pocket, cash, tag):
     """pocket: orta vadeye ayrılan sermaye. (anlık bildirimler, notlar) döner."""
     vs = state.setdefault("ov", {})
@@ -237,7 +248,7 @@ def run(summary, by, mode, state, api, pocket, cash, tag):
 
     # 6) Elde olanlar: süre, İslami filtre, sonraki parça (ilk alıştan g seans sonra, hâlâ dipte/yataydaysa)
     room = max(cash, 0.0) * 0.98
-    placed = []
+    placed, missed = [], []
     for s, info in vs["held"].items():
         if s not in held or s in vs["closing"]:
             continue
@@ -270,11 +281,13 @@ def run(summary, by, mode, state, api, pocket, cash, tag):
             part = info["parts"] + 1
             lim = snap["limit"]
             qty = math.floor(min(info["budget"] / n_parts(), room) / lim)
-            if qty < 1:
-                notes.append(f"⚠️ {s} {part}. parça için nakit yok")
-                continue
             stop = round((info.get("bottom") or snap["bottom"]) * (1 - C.TB_STOP_BELOW), 2)
             tp = round(info["entry"] * (1 + C.TB_TP), 2)
+            if qty < 1:
+                notes.append(f"⚠️ {s} {part}. parça için nakit yok")
+                full = math.floor(info["budget"] / n_parts() / lim)
+                missed.append(_missed_line(s, part, full, lim, stop, tp, room, why_text(snap, part)))
+                continue
             cid = f"{TAG_PREFIX}{day}-{s}-{part}"
             try:
                 api.bracket_buy(s, qty, lim, stop, tp, cid)
@@ -309,12 +322,14 @@ def run(summary, by, mode, state, api, pocket, cash, tag):
         o = s["ov"]
         lim = o["limit"]
         qty = math.floor(min(budget / n_parts(), room) / lim)
-        if qty < 1:
-            kayit.upsert_signal(skey, durum="atlandı (nakit yok)", **ctx)
-            notes.append(f"⚠️ {t} orta vade sinyali verdi ama yeterli nakit yok")
-            continue
         stop = o["stop"]
         tp = round(lim * (1 + C.TB_TP), 2)
+        if qty < 1:
+            full = math.floor(budget / n_parts() / lim)
+            kayit.upsert_signal(skey, durum="atlandı (nakit yok)", adet=full, stop=stop, kar_al=tp, **ctx)
+            notes.append(f"⚠️ {t} orta vade sinyali verdi ama yeterli nakit yok")
+            missed.append(_missed_line(t, 1, full, lim, stop, tp, room, why_text(o, 1)))
+            continue
         cid = f"{TAG_PREFIX}{day}-{t}-1"
         why_ = why_text(o, 1)
         try:
@@ -338,4 +353,7 @@ def run(summary, by, mode, state, api, pocket, cash, tag):
         notes.append(f"📥 {t} orta vade 1. parça emri girildi @ ${lim:,.2f}")
     if placed:
         alerts.append(f"📈 <b>Orta vade – emir giriyorum</b> ({tag}) – {day} kapanışına göre:\n" + "\n".join(placed))
+    if missed:
+        alerts.append(f"💸 <b>Orta vade – nakit yetmedi, para olsaydı alırdım</b> ({tag}) – {day} kapanışına göre:\n"
+                      + "\n".join(missed))
     return _done()
