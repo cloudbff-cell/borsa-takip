@@ -1,0 +1,46 @@
+name: VWAP + EMA9 kesişim (Instagram) testi (analiz)
+
+# Instagram videosundaki VWAP + EMA9 kesişim stratejisini 10 yıllık 3 dk veriyle test eder. İşlem yapmaz.
+# 3 dk veri cache3m/ önbelleğinde tutulur; sonraki testler yalnız eksik günleri indirir (çok daha hızlı).
+on:
+  push:
+    branches: [main]
+    paths: ["tools/vwap_ema9_kesisim_test.py"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/cache/restore@v4
+        with:
+          path: cache
+          key: tarama-kesisim-${{ github.run_id }}
+          restore-keys: tarama-
+      - name: 3 dk veri önbelleği
+        uses: actions/cache/restore@v4
+        with:
+          path: cache3m
+          key: data3m-${{ github.run_id }}
+          restore-keys: data3m-
+      - name: Test
+        env:
+          ALPACA_KEY_ID: ${{ secrets.ALPACA_KEY_ID }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: python -u tools/vwap_ema9_kesisim_test.py
+      - name: 3 dk veri önbelleğini kaydet
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: cache3m
+          key: data3m-${{ github.run_id }}
