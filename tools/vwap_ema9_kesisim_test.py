@@ -80,12 +80,17 @@ def arrays(df):
     }
 
 
-def trades(s, a, stop_pct, slip, start_min=9, exit_mode="close"):
+def trades(s, a, stop_pct, slip, start_min=9, exit_mode="close", max_sig=0):
     o, h, l, c, vw, e9, mins, day = (a[k] for k in ("o", "h", "l", "c", "vw", "e9", "mins", "day"))
     n = len(c)
     sig = np.zeros(n, bool)
     sig[1:] = (e9[1:] > vw[1:]) & (e9[:-1] <= vw[:-1]) & (day[1:] == day[:-1])
     sig &= (mins >= start_min) & (mins <= 360)
+    if max_sig:
+        # günün ilk `max_sig` kesişimi dışındakileri at (alınmasa da her kesişim sayılır)
+        idx = np.flatnonzero(sig)
+        cnt = pd.Series(1, index=idx).groupby(day[idx]).cumsum().to_numpy() if len(idx) else idx
+        sig[idx[cnt > max_sig]] = False
     out, busy = [], -1
     for i in np.flatnonzero(sig):
         k = i + 1
@@ -224,6 +229,9 @@ def main():
         ("Mum EMA9'a değince çık (sıkı)", dict(stop_pct=0.003, slip=0.0002, exit_mode="touch")),
         ("Stop yok", dict(stop_pct=0.0, slip=0.0002)),
         ("Sinyal 10:00'dan sonra", dict(stop_pct=0.003, slip=0.0002, start_min=30)),
+        ("Günün yalnız ilk 2 sinyali", dict(stop_pct=0.003, slip=0.0002, max_sig=2)),
+        ("Günün yalnız ilk sinyali", dict(stop_pct=0.003, slip=0.0002, max_sig=1)),
+        ("İlk 2 sinyal, kaymasız (ham)", dict(stop_pct=0.003, slip=0.0, max_sig=2)),
     ]
     for s in ("SPY", "QQQ"):
         if s in A:
@@ -236,6 +244,9 @@ def main():
         ("Aynısı, kaymasız (ham sinyal)", dict(stop_pct=0.005, slip=0.0)),
         ("Mum EMA9'a değince çık (sıkı)", dict(stop_pct=0.005, slip=0.0005, exit_mode="touch")),
         ("Sinyal 10:00'dan sonra", dict(stop_pct=0.005, slip=0.0005, start_min=30)),
+        ("Günün yalnız ilk 2 sinyali", dict(stop_pct=0.005, slip=0.0005, max_sig=2)),
+        ("Günün yalnız ilk sinyali", dict(stop_pct=0.005, slip=0.0005, max_sig=1)),
+        ("İlk 2 sinyal, kaymasız (ham)", dict(stop_pct=0.005, slip=0.0, max_sig=2)),
     ]
     run_set(f"İslami top-50 hisse ({len(stk)} hisse; işlem başı sermayenin %20'si, en fazla 5 pozisyon)", stk,
             stk_var, alloc=0.2, slots=5, show_years=True, spy=spy_d)
