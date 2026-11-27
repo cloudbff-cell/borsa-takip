@@ -39,3 +39,5 @@ tarih,saat,sembol,islem,adet,fiyat,tutar,neden,strateji,emir_id,anahtar
 2026-11-25,16:01,CSCO,EMİR,32,95.14,3044.48,"2/3. parça · dipten tepeye %109 yükseliş, tepeden %30 düşüş, 3 seanstır yeni dip yok (dip $89.99), fiyat dibin %4.7 üstünde",orta vade,ov-2026-11-25-CSCO-2,emir-ov-2026-11-25-CSCO-2
 2026-11-25,16:01,META,EMİR,5,615.99,3079.95,"1/3. parça · dipten tepeye %50 yükseliş, tepeden %28 düşüş, 3 seanstır yeni dip yok (dip $558.68), fiyat dibin %9.2 üstünde",orta vade,ov-2026-11-25-META-1,emir-ov-2026-11-25-META-1
 2026-11-27,09:35,UBER,ALIŞ,46.0,67.04,3083.84,orta vade: 3/3. parça doldu (ort. maliyet $66.63),orta vade,ov-2026-11-25-UBER-3,alis-224e3fe2-b1f1-4146-9286-7df8760cd166
+2026-11-27,16:01,META,İPTAL,5,615.99,3079.95,orta vade 1. parça limitli alış dolmadı,orta vade,ov-2026-11-25-META-1,iptal-4c3e9a14-48f6-4020-8c29-691caf01a24f
+2026-11-27,16:01,CSCO,İPTAL,32,95.14,3044.48,orta vade 2. parça limitli alış dolmadı,orta vade,ov-2026-11-25-CSCO-2,iptal-db99fedb-a5fb-42ab-a137-dbdf7ee61117
